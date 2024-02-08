@@ -1,0 +1,563 @@
+---
+title: "Playing With OpenTargets DATA"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+```
+
+
+```{r }
+pathToCSV <- '/home/gummi/netprop/data/interaction/interactionAll.csv'
+
+intData <- read.csv(pathToCSV, stringsAsFactors = FALSE)
+
+dim(intData)
+
+length(unique(c(intData$targetA, intData$targetB)))
+
+```
+
+
+
+```{r }
+
+# Filter out any row that have scoring less then 0.75 (perhaps other values should be tested)
+
+intDataFilt  <- intData %>% filter(!(sourceDatabase == "string" & scoring <= 0.4)) # 0.4 only for stringdb
+
+rm(intData)
+
+```
+
+
+```{r }
+# Create an unweighted graph in igraph with targetA and targetB as nodes 
+library(igraph)
+
+intGraph <- graph.data.frame(intDataFilt[,c("targetA","targetB" )], directed = FALSE)
+
+# Remove any self loops and redundant edges
+
+intGraph <- simplify(intGraph, remove.multiple = TRUE, remove.loops = TRUE)
+
+# Get number of nodes and edges
+
+length(V(intGraph))
+length(E(intGraph))
+
+```
+
+# Read in the assocation data
+```{r }
+
+pathToAssocCSV <- "/home/gummi/netprop/data/associationByOverallDirect.csv"
+
+assocData <- read.csv(pathToAssocCSV, stringsAsFactors = FALSE)
+
+types <- table(stringr::str_split(assocData$diseaseId, pattern = "_", simplify = TRUE)[,1])
+
+#    DOID      EFO       GO       HP    MONDO       MP     NCIT      OBI 
+#    6876  1420984     5280   117128   846101     2805       28     9836 
+# Orphanet     OTAR 
+#   119825     2344
+
+```
+
+```{r }
+
+# Filter out only EFO terms
+
+assocDataFilt <- assocData %>% filter(stringr::str_split(diseaseId, pattern = "_", simplify = TRUE)[,1] == "EFO")
+
+length(unique(assocDataFilt$diseaseId))
+
+test_trait<- "EFO_0001073"
+
+# Filter for test trait and remove all rows that have a score less then 0.5
+
+assocDataFiltTest <- assocDataFilt %>% filter(diseaseId == test_trait) %>% filter(score >= 0.5)
+
+rm(assocData)
+
+```
+
+```{r }
+
+# Create the seed vector using the assocDataFiltTest
+
+seedVector <- rep(0, length(V(intGraph)))
+
+seedVector[match(assocDataFiltTest$targetId, V(intGraph)$name)] <- 1
+
+```
+
+```{r }
+
+# Run network propagation with igraph page rank and seed vector
+
+netProp <- page_rank(intGraph, directed = FALSE, damping = 0.85, personalized = seedVector)
+
+# Plot the distribution of the network propagation scores
+
+hist(netProp$vector, breaks = 100)
+
+```
+
+```{r }
+
+# Extract the top 20 genes with the highest network propagation scores
+
+top20 <- sort(netProp$vector, decreasing = TRUE)[1:20]
+
+# Extract the top 20 genes with the highest network propagation scores that are not in the seed vector	
+
+top20NoSeed <- sort(netProp$vector[seedVector == 0], decreasing = TRUE)[1:20]
+
+# Convert the top 20 genes from ensamble to symbol
+
+library(biomaRt)
+
+ensembl <- useEnsembl(biomart = "ensembl", mirror = "useast",dataset = "hsapiens_gene_ensembl")
+
+top20Symbols <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"), filters = "ensembl_gene_id", values = names(top20), mart = ensembl)
+
+top20SymbolsNoSeed <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"), filters = "ensembl_gene_id", values = names(top20NoSeed), mart = ensembl)
+
+```
+
+```{r }
+
+# Take the nodes in the top 25% of the network propagation scores and create a subgraph
+
+top25 <- sort(netProp$vector, decreasing = TRUE)[1:round(length(netProp$vector)*0.25)]
+
+subGraph <- induced_subgraph(intGraph, which(netProp$vector %in% top25))
+
+# Perfrom walktrap community detection on the subgraph
+
+subGraphComm <- walktrap.community(subGraph) # only clusters with atelast seed gene
+
+# Do clusters have higher network propagation scores then the rest of the genes in the subgraph
+
+table(subGraphComm$membership)
+
+```
+
+```{r }
+
+# Run clusterprofiler on the genes from the walktrap community detection 
+
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(ggplot2)
+for( i in unique(membership(subGraphComm))) {
+    genes <- names(membership(subGraphComm)[membership(subGraphComm) == i])
+    if(length(genes) < 5) {
+        next
+    }
+    ego <- enrichGO(gene         = genes,
+                    OrgDb         = org.Hs.eg.db,
+                    keyType       = 'ENSEMBL',
+                    ont           = "ALL",
+                    pAdjustMethod = "BH",
+                    pvalueCutoff  = 0.01,
+                    qvalueCutoff  = 0.05)
+
+    plot <- barplot(ego) + ggtitle(paste("Cluster ", i)) 
+    plot2 <- cnetplot(ego, circular = TRUE, colorEdge = TRUE) + ggtitle(paste("Cluster ", i))	
+    ggsave(paste("cluster", i, ".png", sep = ""), plot)
+    ggsave(paste("cluster", i, "cnetplot.png", sep = ""), plot2)
+
+}
+
+
+```
+
+
+
+
+
+```{r }
+
+# Create a function that generated an AUROC with given a trait and
+
+
+
+
+```
+
+
+
+```{r }
+
+# use pROC
+
+library(pROC)
+
+numberOfrepl <- 100
+
+# Compute the AUROC for single trait
+
+proc <- rep(NA,numberOfrepl)
+
+plots <- list()	
+
+for(i in 1:numberOfrepl) {
+
+    # Given a trait, pick 10 random genes that are seeds and remove the trait from the seed vector
+    recoverGens <- assocDataFiltTest %>% 
+                    sample_n(50,weight = assocDataFiltTest$score) %>% 
+                    select(targetId) %>% 
+                    unlist() %>% 
+                    unname()
+
+    #recoverGens <- sample(V(intGraph)$name,50)
+
+    # Generate a seed vector without the recover genes
+    seedVector <- rep(0, length(V(intGraph)))
+    seedVector[match(
+                        setdiff(assocDataFiltTest$targetId,
+                                recoverGens), 
+            V(intGraph)$name)] <- 1	
+
+    # Run network propagation with seed vector that doesnt include the recover genes
+    netProp <- page_rank(intGraph, directed = FALSE, damping = 0.85, personalized = seedVector)
+
+    # Compute AUROC using the netwerk propagation scores and the recover genes
+    recoverGenesVec <- V(intGraph)$name %in% recoverGens
+
+    rocTmp <- roc(response = recoverGenesVec, predictor = netProp$vector,quiet = TRUE)
+
+    proc[i] <- auc(rocTmp)
+
+    #plots[[i]] <- plot.roc(rocTmp)
+
+}
+
+mean(proc)
+
+
+```
+
+
+
+```{r }
+
+
+
+avgAUROC(intGraph, seedList, 100, c(0.25,0.75), binarize = TRUE, NormFunc = NULL, settingsForNormFunc = NULL)
+avgAUROC(intGraph, seedList, 100, c(0.25,0.75), binarize = TRUE, NormFunc = ECnormalize, settingsForNormFunc = NULL)
+settings1 <- list("nSamples" = 100, "perserveDegree" = TRUE, "degreeSampleSmoothing" = 4, "minBucketSize" = 2)
+avgAUROC(intGraph, seedList, 3, c(0.25,0.75), binarize = TRUE, NormFunc = permuteTest, settingsForNormFunc = settings1)
+
+```
+
+
+
+```
+
+
+```{r }
+
+# Test the avgAUROC function
+
+seedList <- list(assocDataFiltTest$targetId, assocDataFiltTest$score, assocDataFiltTest$score >= 0.5)
+
+#seedList <- list(sample(V(intGraph)$name,100), rep(1,100), rep(TRUE,100))
+
+#seedList <- list(assocDataFilt$targetId,100), rep(1,100), rep(TRUE,100)
+
+avgAUROC(intGraph, seedList, 10, 0.25, binarize = TRUE)
+
+#x <- c()
+#for(i in 1:100) {
+#   x[i] <- pROC::auc(pROC::roc(response = sample(c(TRUE,FALSE),100,replace=T,prob=c(0.1,0.9)), predictor = runif(100),direction=">"))[[1]]
+#}
+#mean(x)
+
+
+seeds1 <- createSeedVector(intGraph, seedList, binarize = TRUE)
+netProp1 <- igraph::page_rank(intGraph, directed = FALSE, damping = 0.85, personalized = seeds1[[1]])$vector
+scores1 <- netProp1$vector
+
+
+ecScore1 <- str(igraph::page_rank(intGraph, directed = FALSE, damping = 1, personalized = seeds1[[1]],algo="arpack"))
+scores2 <- scores1/ecScore1$vector
+
+eigeCent <- igraph::eigen_centrality(intGraph, directed = FALSE, scale = FALSE, weights = NULL, options = NULL)
+
+summary(igraph::page_rank(intGraph, directed = FALSE, damping = 1, personalized = seeds1[[1]],algo="arpack")$vector)
+```
+
+```{r }
+
+# Run avgAUROC for some EFO traits
+
+read.csv("/home/gummi/netprop/phenotypeMapping.csv", stringsAsFactors = FALSE) -> diseaseMappings
+
+aurocs <- list()
+
+# Filter traits from assocDataFilt that have less then 10 seed genes with score >= 0.5
+assocDataFilt10 <- assocDataFilt %>%
+                            filter(score >= 0.5) %>%
+                            group_by(diseaseId) %>% 
+                            filter(n() >= 10) %>%
+                            ungroup() 
+
+for(trait in unique(assocDataFilt10$diseaseId)) {
+
+    assocDataFiltTemp <- assocDataFilt10 %>% filter(diseaseId == trait)
+
+    seedsInd <- assocDataFiltTemp$score >= 0.5
+
+    if(sum(seedsInd) < 10) {
+        print(paste("Trait ", trait, " has less then 10 seed genes with score >= 0.5", sep = ""))
+        next
+    }
+
+    seedList <- list(assocDataFiltTemp$targetId, assocDataFiltTemp$score, seedsInd)
+
+    diseaseName <- diseaseMappings[which(diseaseMappings$id == trait),4] 
+
+    aurocs[[diseaseName]] <- avgAUROC(intGraph, seedList, 10, c(0.25,0.5,0.75), binarize = TRUE, weightSampling = FALSE,usePermutedscores = FALSE,permuteSamples = 100)
+
+    print(paste("Finished trait ", diseaseName, " with ", sum(seedsInd), sep = ""))
+
+}
+
+allTraits <- do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv("aurocsNoWeight.csv", row.names = FALSE)
+
+```
+
+```{r }
+
+# Create a function for permuation testing
+
+
+# Test function
+
+#permuteVals <- permuteTest(intGraph, seedList, binarize = TRUE, nSamples = 100, perserveDegree = FALSE, degreeSampleSmoothing = 3,minBucketSize = 3)
+#permuteVals <- permuteTest(intGraph, seedList, binarize = TRUE, nSamples = 100, perserveDegree = TRUE, degreeSampleSmoothing = 1,minBucketSize = 2)
+#ssedVec <- createSeedVector(intGraph, seedList, binarize = TRUE)
+#settings1 <- list("nSamples" = 100, "perserveDegree" = TRUE, "degreeSampleSmoothing" = 2, "minBucketSize" = 2)
+#permuteVals <- permuteTest(intGraph, ssedVec[[1]], netPropScores = NULL, settings = settings1)
+
+
+```
+
+```{r }
+permuteVals <- permuteTest(intGraph, seedList, binarize = TRUE, nSamples = 1000, perserveDegree = TRUE, degreeSampleSmoothing = 2,minBucketSize = 2)
+
+DescTools::Entropy(permuteVals[[1]]) # IS the distribution of the p-values uniform?  LOTS OF 1s, WHY??
+
+
+```
+
+```{r }
+
+```
+
+```{r }
+```
+
+
+
+```{r }
+library(pROC)
+variantCertain = read.csv("/home/gummi/netprop/data/20240101_variantsEFO_MONDO_withSource_updatedJBTS.csv")
+variantCertain = unique(variantCertain[,c("diseaseId", "targetId")])
+
+variantCertainMin10 = variantCertain[variantCertain$diseaseId %in% names(table(variantCertain$diseaseId))[table(variantCertain$diseaseId) > 9],]
+
+diseases = unique(variantCertainMin10$diseaseId)
+
+
+benchmark <-
+  function(disease = diseases[1], intGraph = intGraph, phenoDF,prop) {
+    variantList <-
+      unique(unlist(phenoDF[phenoDF$diseaseId == paste0(disease), 'targetId']))
+
+    if (sum(variantList %in% V(intGraph)$name) != length(variantList)) {
+      missingGenes <- length(variantList) - sum(variantList %in% V(intGraph)$name)
+      variantList <- variantList[variantList %in% V(intGraph)$name]
+      print(paste("Disease ", disease, " has ", missingGenes, " genes that arent in network", sep = ""))
+    } 
+
+    testList <-
+      sample(variantList, prop*length(variantList))
+    
+    `%notin%` <- Negate(`%in%`)
+    trainList = variantList[variantList %notin% testList]
+    
+    if (length(variantList) < 10) {
+      resAUC = NA
+    } else {
+      V(intGraph)$targetGene = 0
+      V(intGraph)$targetGene[V(intGraph)$name %in% trainList] = 1
+      
+      pageRank = page_rank(intGraph, personalized = V(intGraph)$targetGene)
+      
+      pageRankRes = data.frame(
+        gene = V(intGraph)$name,
+        pageRank = pageRank$vector,
+        target = V(intGraph)$targetGene
+      )
+      pageRankRes$test = 0
+      pageRankRes[pageRankRes$gene %in% testList, 'test'] = 1
+      
+      pageRankRes = pageRankRes[pageRankRes$target != 1, ]
+      resROC <- roc(pageRankRes$test, pageRankRes$pageRank,quiet = TRUE)
+      resAUC <- resROC$auc
+    }
+    return(resAUC)
+  }
+
+#aucAll <- sapply(diseases, FUN = function(x){benchmark(disease = x, intGraph = intGraphClean)})
+
+
+# Try running it 10 times for each disease and take the mean
+#ellensAUR <- list()
+#
+#
+#for (i in 1:10) {
+#    # This was run with prop = 0.9
+#  ellensAUR[[i]] <- sapply(diseases, FUN = function(x){benchmark(disease = x, intGraph = intGraph, phenoDF = variantCertainMin10,prop = 0.5)})
+#
+#}
+
+
+#unlist(unlist(ellensAUR)) %>% summary()
+
+
+# Try running it on the data I was working on
+
+resEFO <- sapply(unique(assocDataFilt10$diseaseId), FUN = function(x){benchmark(disease = x, intGraph = intGraph, phenoDF = assocDataFilt10,prop = 0.9)})
+
+
+```
+
+
+```{r }
+
+
+source("/home/gummi/netprop/Code/NetPropFuncs.R")
+
+aurocs <- list()
+
+for(trait in diseases) {
+
+    print(paste("Starting trait ", trait, sep = ""))
+
+    variantCertainTemp <- variantCertainMin10 %>% filter(diseaseId == trait)
+
+    seedsInd <- variantCertainTemp$targetId
+
+    seedList <- list(variantCertainTemp$targetId, rep(1,length(seedsInd)), rep(TRUE,length(seedsInd)))
+
+    aurocs[[trait]] <- avgAUROC(intGraph, seedList, 1, c(0.5), binarize = TRUE, NormFunc = NULL, settingsForNormFunc = NULL)
+
+}
+
+allTraits <- do.call(rbind,aurocs) %>% as.data.frame() 
+
+
+source("/home/gummi/netprop/Code/NetPropFuncs.R")
+
+aurocs <- list()
+
+for(trait in unique(assocDataFilt10$diseaseId)) {
+
+    print(paste("Starting trait ", trait, sep = ""))
+
+    variantCertainTemp <- assocDataFilt10 %>% filter(diseaseId == trait)
+
+    seedsInd <- variantCertainTemp$targetId
+
+    seedList <- list(variantCertainTemp$targetId, rep(1,length(seedsInd)), rep(TRUE,length(seedsInd)))
+
+    aurocs[[trait]] <- avgAUROC(intGraph, seedList, 1, c(0.9), binarize = TRUE, NormFunc = NULL, settingsForNormFunc = NULL)
+
+}
+
+allTraits <- do.call(rbind,aurocs) %>% as.data.frame() 
+
+
+summary(allTraits$mean_0.9)
+summary(resEFO)
+
+```
+
+# Run ellens code
+```
+
+
+
+```
+
+
+
+```
+
+
+```{r }
+
+nodeInds <- 1:100
+
+
+
+
+
+# Create buckets for each of the seed nodes based on their degree
+seedDegrees <- degree(intGraph, nodeInds) 
+
+# Get degrees of all nodes in network
+allDegrees <- degree(intGraph) 
+
+
+sapply(b, function(x) sample(x,1))
+
+
+
+x <- abs(17- seedDegrees)
+
+``` 
+
+
+```{r }
+
+
+# Plot from the auroc.csv file
+
+aurocs <- read.csv("aurocs.csv", stringsAsFactors = FALSE)
+
+library(ggplot2)
+
+# Plot density of values of the AUROC for mean_0.25, mean_0.5, mean_0.75
+
+# Combine the three mean columns into one column and create a new column that indicates which mean column the value came from
+
+aurocsLongDF <- data.frame(vals = c(aurocs$mean_0.25, aurocs$mean_0.5, aurocs$mean_0.75),
+                            PercentDropped = c(rep("0.25",nrow(aurocs)), rep("0.5",nrow(aurocs)), rep("0.75",nrow(aurocs))),
+                            nSeeds = c(aurocs$nseeds,aurocs$nseeds,aurocs$nseeds))
+
+
+# plot the density of the mean values
+
+#ggplot(aurocsLongDF, aes(x = vals, fill = PercentDropped)) + geom_density(alpha = 0.5) + theme_bw() + ggtitle("Density of AUROC values for Drop_0.25, Drop_0.5, Drop_0.75")
+
+# Plot violin plots of the mean values
+
+#ggplot(aurocsLongDF, aes(x = PercentDropped, y = vals, fill = PercentDropped)) + geom_violin() + theme_bw() + ggtitle("Violin plot of AUROC values for mean_0.25, mean_0.5, mean_0.75")
+
+# Plot box plots of the mean values side by side 
+
+ggplot(aurocsLongDF, aes(x = PercentDropped, y = vals, fill = PercentDropped)) + geom_boxplot() + theme_bw() + ggtitle("Box plot of AUROC values for Drop_0.25, Drop_0.5, Drop_0.75")
+
+# Plot the relationship between the number of seed genes and the mean AUROC values with a scatter plot and regression line, drop outliers
+
+#ggplot(aurocsLongDF, aes(x = nSeeds, y = vals,color = PercentDropped)) + geom_point() + xlim(0,100) +geom_smooth(method = "lm") + theme_bw() + ggtitle("Scatter plot of AUROC values for Drop_0.25, Drop_0.5, Drop_0.75")
+
+
+```

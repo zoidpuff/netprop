@@ -1,0 +1,138 @@
+---
+title: "Playing with Interaction Network"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(sparklyr)
+library(sparklyr.nested)
+```
+
+
+## Establish connection
+
+```{r }
+
+#spark_install("3.5")
+sc <- spark_connect(master = "local", log = "console",config = list(sparklyr.verbose = TRUE))
+
+```
+
+
+# Read interaction Dataset
+
+```{r }
+
+interactionPath <- '/home/gummi/netprop/data/interaction/'
+
+interaction <- spark_read_parquet(sc,
+                                  path = interactionPath)
+
+```
+
+## Define necessary columns
+
+```{r }
+columns <- interaction %>%
+  sdf_schema() %>%
+  lapply(function(x) do.call(tibble, x)) %>%
+  rbind()
+
+```
+
+## read dataset and select columns (loop for memory issues)
+
+```{r }
+
+fileTable = cbind("",list.files(path = interactionPath, pattern= "snappy"))
+colnames(fileTable)=c("file_name","parquet")
+fileTable[,"file_name"]=paste0(interactionPath,
+                               "part",
+                               c(1:nrow(fileTable)),
+                               ".csv",sep="")
+for (i in 1:nrow(fileTable)){
+  print(i)
+  SetPath <- fileTable[i,"parquet"]
+  Set <- spark_read_parquet(sc, path = paste0(interactionPath, SetPath), overwrite = TRUE)
+  df <- Set %>%
+    select(sourceDatabase,
+           targetA,
+           targetB,
+           scoring) %>%
+    collect()
+  write.csv(df,fileTable[i,"file_name"],row.names=F)
+}
+spark_disconnect(sc)
+
+```
+
+## create dataframe with all interactions
+
+```{r }
+
+fileList = list.files(path = interactionPath, pattern = "part.*\\.csv")
+intAll = as.data.frame(matrix(ncol = 4))
+colnames(intAll) = colnames(read.csv(paste0(interactionPath, fileList[[1]])))
+for (i in 1:length(fileList)){
+  print(i)
+  df <- read.csv(paste0(interactionPath, fileList[[i]]))
+  intAll <- rbind(intAll,df)
+}
+intAll = intAll[!is.na(intAll$targetA) & !is.na(intAll$targetB),] #filter targets wo ID
+intAll = intAll[lapply(intAll$targetA, FUN = nchar) == 15,]
+intAll = intAll[lapply(intAll$targetB, FUN = nchar) == 15,]
+write.csv(intAll, './data/interaction/interactionAll.csv')
+
+```
+
+## Read in the association dataset
+
+```{r }
+associtionPtah <- '/home/gummi/netprop/data/associationByDatasourceDirect'
+associtionPtah <- '/home/gummi/netprop/data/associationByDatatypeDirect'
+associtionPtah <- '/home/gummi/netprop/data/associationByOverallDirect'
+associtionPtah <- '/home/gummi/netprop/data/mousePhenotypes'
+
+
+association <- spark_read_parquet(sc,
+                                  path = associtionPtah)
+
+assocDF <- collect(association)
+
+#write.csv(assocDF, './data/mousePhenotypes.csv')
+
+# Write the mousePhenotypes as rdata file because it is not tabular
+#save(assocDF, file = "./data/mousePhenotypes.rdata")
+
+# save mapping to parent phenos 
+
+mouseTest <- tidyr::unnest_wider(tidyr::unnest_longer(assocDF[-1],modelPhenotypeClasses),modelPhenotypeClasses)
+
+# Save mousetest to csv
+
+write.csv(mouseTest, './data/mousePhenotypesUnnested.csv')
+
+```
+
+## Create csv for the disease and disease to phenotype 
+
+```{r }
+
+#diseasePath <- '/home/gummi/netprop/data/diseases/'
+diseasePath <- '/home/gummi/netprop/data/diseaseToPhenotype/'
+
+disease <- spark_read_parquet(sc,
+                                  path = diseasePath)
+
+diseaseDF <- collect(disease)
+
+head(diseaseDF)
+
+
+t <- stringr::str_split(assocData$diseaseId, pattern = "_", simplify = TRUE)[,1]
+```
+
+

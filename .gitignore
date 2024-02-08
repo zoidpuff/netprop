@@ -1,0 +1,17 @@
+/aurocResults_binarized_normalized.csv
+/aurocResults_binarized_unnormalized.csv
+/aurocResults_permuted_degreePreserve.csv
+/aurocResults_weighted_normalized.csv
+/aurocResults_weighted_unnormalized.csv
+/aurocs.csv
+/aurocsNoWeight.csv
+/cluster18.png
+/cluster18cnetplot.png
+/cluster31.png
+/cluster31cnetplot.png
+/cluster9.png
+/cluster9cnetplot.png
+/data
+/derby.log
+/phenotypeMapping.csv
+/propagationAUCtest.R:Zone.Identifier

@@ -1,0 +1,52 @@
+
+
+library(dplyr)
+library(sparklyr)
+library(sparklyr.nested)
+
+
+interactionPath <- 'W:/GROUP/Users/Ellen/NetworkPropagation/Datasets/interaction/'
+## establish connection
+sc <- spark_connect(master = "local", log = "console",
+                    config = list(sparklyr.verbose = TRUE))
+## read interaction dataset
+interaction <- spark_read_parquet(sc,
+                                  path = interactionPath)
+## define necessary columns
+columns <- interaction %>%
+  sdf_schema() %>%
+  lapply(function(x) do.call(tibble, x)) %>%
+  rbind()
+## read dataset and select columns (loop for memory issues)
+fileTable = cbind("",list.files(path = interactionPath, pattern= "snappy"))
+colnames(fileTable)=c("file_name","parquet")
+fileTable[,"file_name"]=paste0(interactionPath,
+                               "part",
+                               c(1:nrow(fileTable)),
+                               ".csv",sep="")
+for (i in 1:nrow(fileTable)){
+  print(i)
+  SetPath <- fileTable[i,"parquet"]
+  Set <- spark_read_parquet(sc, path = paste0(interactionPath, SetPath), overwrite = TRUE)
+  df <- Set %>%
+    select(sourceDatabase,
+           targetA,
+           targetB,
+           scoring) %>%
+    collect()
+  write.csv(df,fileTable[i,"file_name"],row.names=F)
+}
+spark_disconnect(sc)
+## create dataframe with all interactions
+fileList = list.files(path = interactionPath, pattern = "part.*\\.csv")
+intAll = as.data.frame(matrix(ncol = 4))
+colnames(intAll) = colnames(read.csv(paste0(interactionPath, fileList[[1]])))
+for (i in 1:length(fileList)){
+  print(i)
+  df <- read.csv(paste0(interactionPath, fileList[[i]]))
+  intAll <- rbind(intAll,df)
+}
+intAll = intAll[!is.na(intAll$targetA) & !is.na(intAll$targetB),] #filter targets wo ID
+intAll = intAll[lapply(intAll$targetA, FUN = nchar) == 15,]
+intAll = intAll[lapply(intAll$targetB, FUN = nchar) == 15,]
+write.csv(intAll, './Datasets/interaction/interactionAll.csv')
