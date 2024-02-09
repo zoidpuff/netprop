@@ -138,7 +138,14 @@ ECnormalize <- function(network,seedVector,rawNetPropScores,settings) {
             return(rep(NA,length(rawNetPropScores)))
         } 
 
-        return(rawNetPropScores/ecScore$vector)
+        # Choose an epsilon value
+        epsilon <- 1e-6
+        
+        # Add epsilon to avoid log(0) and apply logarithmic transformation for numerical stability
+        logTransformedScores <- log(rawNetPropScores + epsilon)
+        logTransformedECScores <- log(ecScore$vector + epsilon)
+
+        return(logTransformedScores - logTransformedECScores)
     
 }
 

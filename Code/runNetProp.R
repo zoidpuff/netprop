@@ -1,11 +1,15 @@
 
 library(igraph)
 library(dplyr)
-source("/home/gummi/netprop/Code/NetPropFuncs.R")
+
+netpropPath <- "/home/gummi/netprop"
+
+# Load the netprop functions
+source(paste0(netpropPath,"/Code/NetPropFuncs.R"))
 
 # Load the network data
 
-pathToCSV <- '/home/gummi/netprop/data/interaction/interactionAll.csv'
+pathToCSV <- paste0(netpropPath,"/data/interactionAll.csv")
 
 intData <- read.csv(pathToCSV, stringsAsFactors = FALSE)
 
@@ -19,7 +23,8 @@ rm(intData, intDataFilt)
 intGraph <- simplify(intGraph, remove.multiple = TRUE, remove.loops = TRUE)
 
 # Load the association data and filter for EFO diseases that have at least 10 seed genes with score >= 0.5
-pathToAssocCSV <- "/home/gummi/netprop/data/associationByOverallDirect.csv"
+
+pathToAssocCSV <- paste0(netpropPath,"/data/associationByOverallDirect.csv")
 assocData <- read.csv(pathToAssocCSV, stringsAsFactors = FALSE)
 assocDataFilt10 <- assocData %>% 
                             filter(stringr::str_split(diseaseId, pattern = "_", simplify = TRUE)[,1] == "EFO") %>%
@@ -31,7 +36,8 @@ assocDataFilt10 <- assocData %>%
 rm(assocData)
 
 # Load the EFO to description mapping
-diseaseMappings <- read.csv("/home/gummi/netprop/phenotypeMapping.csv", stringsAsFactors = FALSE) 
+diseaseMappings <- read.csv(paste0(netpropPath,"/data/phenotypeMapping.csv"), stringsAsFactors = FALSE) %>%
+                    filter(id %in% unique(assocDataFilt10$diseaseId))
 
 print(paste0("Number of traits:", length(unique(assocDataFilt10$diseaseId))))
 
@@ -57,7 +63,7 @@ for(BINARIZE in c(TRUE,FALSE)) {
         }
         print(paste0("Finished binarize: ", BINARIZE, " NormFunc: ", ifelse(is.null(NORMFUNC),"NULL",deparse(substitute(NORMFUNC))) ))
         binned <- ifelse(BINARIZE, "_binarized", "_weighted")
-        normed <- ifelse(is.null(NORMFUNC), "_unnormalized", "_normalized")
+        normed <- ifelse(is.null(NORMFUNC), "_unnormalized", "_ECnormalized")
 
         do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv(paste0("aurocResults",binned,normed,".csv"))
     }
@@ -77,9 +83,9 @@ for(SETTINGS in list(settings1,settings2)) {
 
         diseaseName <- diseaseMappings[which(diseaseMappings$id == trait),4] 
 
-        aurocs[[diseaseName]] <- avgAUROC(intGraph, seedList, 100, c(0.1, 0.25, 0.5, 0.75), binarize = TRUE, NormFunc = permuteTestNormalize, settingsForNormFunc = SETTINGS)
+        aurocs[[diseaseName]] <- avgAUROC(intGraph, seedList, 20, c(0.1, 0.25, 0.5, 0.75), binarize = TRUE, NormFunc = permuteTestNormalize, settingsForNormFunc = SETTINGS)
 
         #print(paste("Finished trait ", diseaseName, " with ", sum(seedsInd), sep = ""))
     }
-    do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv(paste0("aurocResults_permuted_",ifelse(SETTINGS$perserveDegree,"degreePreserve",""),".csv"))
+    do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv(paste0("aurocResults_permuteNorm_",ifelse(SETTINGS$perserveDegree,"_degreePreserve",""),".csv"))
 }
