@@ -65,7 +65,7 @@ for(BINARIZE in c(TRUE,FALSE)) {
         binned <- ifelse(BINARIZE, "_binarized", "_weighted")
         normed <- ifelse(is.null(NORMFUNC), "_unnormalized", "_ECnormalized")
 
-        do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv(paste0("aurocResults",binned,normed,".csv"))
+        do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv(paste0(netpropPath,"/results/aurocResults",binned,normed,".csv"))
     }
 }
 
@@ -87,5 +87,5 @@ for(SETTINGS in list(settings1,settings2)) {
 
         #print(paste("Finished trait ", diseaseName, " with ", sum(seedsInd), sep = ""))
     }
-    do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv(paste0("aurocResults_permuteNorm_",ifelse(SETTINGS$perserveDegree,"_degreePreserve",""),".csv"))
+    do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv(paste0(netpropPath,"/results/aurocResults_permuteNorm_",ifelse(SETTINGS$perserveDegree,"_degreePreserve",""),".csv"))
 }
