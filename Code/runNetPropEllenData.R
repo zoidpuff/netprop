@@ -2,7 +2,7 @@
 library(igraph)
 library(dplyr)
 
-netpropPath <- "/home/gummi/netprop"
+netpropPath <- "/cluster/home/gmagnusson/netprop"
 
 # Load the netprop functions
 source(paste0(netpropPath,"/Code/NetPropFuncs.R"))
@@ -57,11 +57,20 @@ normList <- list(list(NULL,NULL,"noNorm"),
 
 
 # Run auroc test for each trait for each normalization method
+library(doParallel)
+library(foreach)
+
+# Register the parallel backend
+no_cores <- min(60, detectCores())
+cl <- makeCluster(no_cores)
+registerDoParallel(cl)
+
 for(BINARIZE in c(TRUE)) {
     for(NORMFUNC in normList) {
-        aurocs <- list()
         print(paste0("Started binarize: ", BINARIZE, " NormFunc: ", NORMFUNC[[3]] ))
-        for(trait in unique(assocDataFilt10$diseaseId)) {
+
+        # Replace the outer for loop with a foreach loop
+        aurocs <- foreach(trait = unique(assocDataFilt10$diseaseId), .combine = 'list', .packages = 'dplyr') %dopar% {
 
             assocDataFiltTemp <- assocDataFilt10 %>% filter(diseaseId == trait)
 
@@ -71,7 +80,7 @@ for(BINARIZE in c(TRUE)) {
 
             diseaseName <- diseaseMappings[which(diseaseMappings$id == trait),4] 
 
-            aurocs[[trait]] <- c(diseaseName, 
+            (diseaseName, 
                                     avgAUROC(network = intGraph,
                                             seedList = seedList,
                                             nRep = 25,
@@ -90,3 +99,4 @@ for(BINARIZE in c(TRUE)) {
     }
 }
 
+stopCluster(cl)
