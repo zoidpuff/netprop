@@ -59,7 +59,7 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
     # Create the seed vector using the seed list
     seeds <- createSeedVector(network, seedList, binarize = binarize)
     seedVecMaster <- seeds[[1]] # Vector of of length V(network) were only seed genes are non zero
-    seedGeneInds <- seeds[[2]] # Vector of indices of the seed genes in the network 
+    seedGeneInds <- seeds[[2]] # Vecor of indices of the seed genes in the network 
 
     # Get the number of genes that are in the seed list but not in the network (matching with ENSEMBL ids)
     missingGenes <- length(seedList[[1]]) - length(seedGeneInds)
@@ -124,6 +124,9 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
     }
 
     resVec["failedReplicates"] <- NAcount
+
+    # Stop the cluster
+    stopCluster(cl)
 
     return(resVec) # names vector with mean, sd, max, min for each recover size
 
