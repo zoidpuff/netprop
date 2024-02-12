@@ -53,8 +53,6 @@ normList <- list(list(NULL,NULL,"noNorm"),
                 list(permuteTestNormalize,settingsPerm1,"permuteNorm"),
                 list(permuteTestNormalize,settingsPerm2,"permuteNormDegree"))
 
-# For test 
-assocDataFilt10 <- filter(assocDataFilt10, diseaseId == assocDataFilt10$diseaseId[1])
 
 # Run auroc test for each trait for each normalization method
 for(BINARIZE in c(TRUE)) {
