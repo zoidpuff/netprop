@@ -58,7 +58,7 @@ library(doParallel)
 library(foreach)
 
 # Register the parallel backend
-no_cores <- min(30, detectCores())
+no_cores <- min(60, detectCores())
 cl <- makeCluster(no_cores)
 registerDoParallel(cl)
 
