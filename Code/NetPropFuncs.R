@@ -156,7 +156,7 @@ ECnormalize <- function(network,seedVector,rawNetPropScores,settings) {
             return(logTransformedScores - logTransformedECScores)
 
         } else {
-            return(rawNetPropScores/ecScore)
+            return(rawNetPropScores/ecScore$vector)
         }
     
 }
@@ -212,6 +212,8 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
     # Init vectors that will hold the number of times a node was sampled and the number of times it was included in the sampling
     countVec <- rep(1, length(netPropTRUE))
     includedVec <- rep(1, length(netPropTRUE))
+    seedInds <- which(seedVector != 0)
+    seedScores <- seedVector[seedInds]
 
     # If we want to permute the seed vector while maintaing the degree distribution of the seed genes
     if(perserveDegree) {
@@ -219,14 +221,11 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
         # Keep track of bucketing attempts
         retryCount <- 0	
         
-        seedInds <- which(seedVector != 0)
-
         # Get the degrees of the seed genes
-        seedDegrees <- degree(network, seedInds)
-        seedScores <- seedVector[seedInds]
+        seedDegrees <- igraph::degree(network, seedInds)
         
         # Get degrees of all nodes in network
-        allDegrees <- degree(network)
+        allDegrees <- igraph::degree(network)
         
         bucketSizes <- c(-1,0,0)
 
@@ -280,34 +279,42 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
 
     }
 
-    
+    numberOfNodes <- length(seedVector)
+    numberOfSeeds <- length(seedInds)
+
     # For each permutation
     for(i in 1:nSamples) {
+
+        permutedSeedVector <- rep(0, numberOfNodes)
 
         if(perserveDegree) {
             # Sampling procedure that samples nodes with the same degree as the seed genes 
             sampledNodesInds <- sapply(nodesInBucketsList, function(x) sampleIndsFix(x))
-
-            #sampledNodesInds <- match(sampledNodes,V(network)$name)
-
-            permutedSeedVector <- rep(0, length(V(network)$name))
 
             # Give sample nodes scores based on original seed vector
             permutedSeedVector[sampledNodesInds] <- seedScores
 
         } else {
             # Create a permuted seed vector with sample()
-            permutedSeedVector <- sample(seedVector)
+            # I changed this so that I save inds so I dont have to do x != 0 many times 
+            sampledNodesInds <- sample(numberOfNodes, numberOfSeeds)
+            permutedSeedVector[sampledNodesInds] <- seedScores
         }
 
         # Run network propagation with the permuted seed vector
         netPropFALSE <- igraph::page_rank(network, directed = FALSE, damping = 0.85, personalized = permutedSeedVector)
 
         # Add to the count vector if the permuted seed vector has a higher score then the true seed vector and the node was not a seed gene
-        countVec <- countVec + as.numeric((netPropFALSE$vector >= netPropTRUE) & (permutedSeedVector == 0) ) 
+        temp <- as.numeric(netPropFALSE$vector >= netPropTRUE)
+        temp[sampledNodesInds] <- 0
+
+        countVec <- countVec + temp
 
         # Add to the included vector if the node was not a seed gene
-        includedVec <- includedVec + as.numeric(permutedSeedVector == 0)
+        temp <- rep(1,numberOfNodes)
+        temp[sampledNodesInds] <- 0
+
+        includedVec <- includedVec + temp
 
     }
 
@@ -321,3 +328,29 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
     return(permutationScores)
 }
 
+# A function that takes in a network, a dataframe of gene to disease associations, a cuttoff value value and a normalzation function
+# Returns a list of lists, each list contains network propagation scores for a 
+
+runNetProp <- function(network, assocData, cutoff,  binarize = TRUE, damping = 0.85) {
+
+
+    # Create a list to hold the results
+    resList <- list()
+
+    # For each disease in the association data
+    for(disease in unique(assocData$diseaseId)) {
+
+        # Filter the association data for the current disease
+        assocDataFiltTemp <- assocData %>% filter(diseaseId == disease)
+
+        # Create a seed list from the association data
+        seedList <- list(assocDataFiltTemp$targetId, rep(1,length(assocDataFiltTemp$targetId)), rep(TRUE,length(assocDataFiltTemp$targetId)))
+
+        # Run the avgAUROC function
+        resList[[disease]] <- avgAUROC(network, seedList, nRep, recoverSizeVec, binarize = binarize, NormFunc = NormFunc, settingsForNormFunc)
+
+    }
+
+    return(resList)
+
+}

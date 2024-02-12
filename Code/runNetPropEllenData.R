@@ -43,50 +43,50 @@ diseaseMappings <- read.csv(paste0(netpropPath,"/data/phenotypeMapping.csv"), st
 print(paste0("Number of traits:", length(unique(assocDataFilt10$diseaseId))))
 
 print("Starting to run netprop")
+
+
+settingsPerm1 <- list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 4, "minBucketSize" = 1)
+settingsPerm2 <- list("nSamples" = 100, "perserveDegree" = TRUE, "degreeSampleSmoothing" = 3, "minBucketSize" = 1)
+
+
+normList <- list(list(NULL,NULL,"noNorm"),
+                list(ECnormalize,list("logtransform" = FALSE),"ECnorm"),
+                list(ECnormalize,list("logtransform" = TRUE),"ECnormLog"),
+                list(permuteTestNormalize,settingsPerm1,"permuteNorm"),
+                list(permuteTestNormalize,settingsPerm2,"permuteNormDegree"))
+
+
 # Run auroc test for each trait for each normalization method
-for(BINARIZE in c(TRUE,FALSE)) {
-    for(NORMFUNC in list(NULL,ECnormalize)) {
+for(BINARIZE in c(TRUE)) {
+    for(NORMFUNC in normList) {
         aurocs <- list()
-        print(paste0("Binarize: ", BINARIZE, " NormFunc: ", ifelse(is.null(NORMFUNC),"NULL",deparse(substitute(NORMFUNC))) ))
+        print(paste0("Started binarize: ", BINARIZE, " NormFunc: ", NORMFUNC[[3]] ))
         for(trait in unique(assocDataFilt10$diseaseId)) {
 
             assocDataFiltTemp <- assocDataFilt10 %>% filter(diseaseId == trait)
 
-            seedsInd <- rep(TRUE,nrow(assocDataFiltTemp))
+            seedsInd <- rep(TRUE, nrow(assocDataFiltTemp))
 
             seedList <- list(assocDataFiltTemp$targetId, rep(1,length(seedsInd)), seedsInd)
 
             diseaseName <- diseaseMappings[which(diseaseMappings$id == trait),4] 
 
-            aurocs[[diseaseName]] <- avgAUROC(intGraph, seedList, 100, c(0.1, 0.25, 0.5, 0.75), binarize = BINARIZE, NormFunc = NORMFUNC, settingsForNormFunc = NULL)
+            aurocs[[trait]] <- c(diseaseName, 
+                                    avgAUROC(network = intGraph,
+                                            seedList = seedList,
+                                            nRep = 25,
+                                            recoverSizeVec = c(0.25, 0.5, 0.75, 0.9),
+                                            binarize = BINARIZE,
+                                            NormFunc = NORMFUNC[[1]],
+                                            settingsForNormFunc = NORMFUNC[[2]]))
+
 
             #print(paste("Finished trait ", diseaseName, " with ", sum(seedsInd), sep = ""))
         }
-        print(paste0("Finished binarize: ", BINARIZE, " NormFunc: ", ifelse(is.null(NORMFUNC),"NULL",deparse(substitute(NORMFUNC))) ))
-        binned <- ifelse(BINARIZE, "_binarized", "_weighted")
-        normed <- ifelse(is.null(NORMFUNC), "_unnormalized", "_ECnormalized")
+        print(paste0("Finished binarize: ", BINARIZE, " NormFunc: ", NORMFUNC[[3]] ))
+        binned <- ifelse(BINARIZE, "_binarized_", "_weighted_")
 
-        do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv(paste0(netpropPath,"/results/ELLENaurocResults",binned,normed,".csv"))
+        do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv(paste0(netpropPath,"/results/ellenDat_aurocResults",binned,NORMFUNC[[3]],".csv"))
     }
 }
 
-settings1 <- list("nSamples" = 100, "perserveDegree" = TRUE, "degreeSampleSmoothing" = 4, "minBucketSize" = 2)
-settings2 <- list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 4, "minBucketSize" = 2)
-
-for(SETTINGS in list(settings1,settings2)) {
-    for(trait in unique(assocDataFilt10$diseaseId)) {
-
-        assocDataFiltTemp <- assocDataFilt10 %>% filter(diseaseId == trait)
-
-        seedsInd <- rep(TRUE,nrow(assocDataFiltTemp))
-
-        seedList <- list(assocDataFiltTemp$targetId, rep(1,length(seedsInd)), seedsInd)
-
-        diseaseName <- diseaseMappings[which(diseaseMappings$id == trait),4] 
-
-        aurocs[[diseaseName]] <- avgAUROC(intGraph, seedList, 20, c(0.1, 0.25, 0.5, 0.75), binarize = TRUE, NormFunc = permuteTestNormalize, settingsForNormFunc = SETTINGS)
-
-        #print(paste("Finished trait ", diseaseName, " with ", sum(seedsInd), sep = ""))
-    }
-    do.call(rbind,aurocs) %>% as.data.frame() %>% write.csv(paste0(netpropPath,"/results/ELLENaurocResults_permuteNorm_",ifelse(SETTINGS$perserveDegree,"_degreePreserve",""),".csv"))
-}
