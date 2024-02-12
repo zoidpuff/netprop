@@ -51,10 +51,10 @@ return(list(seedVecMaster,seedGeneInds,seedGeneScores))
 
 avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,NormFunc = NULL,settingsForNormFunc) {
 
-    no_cores <- min(detectCores(),16)
+    #no_cores <- min(detectCores(),16)
 
-    cl <- makeCluster(no_cores)
-    registerDoParallel(cl)
+    #cl <- makeCluster(no_cores)
+    #registerDoParallel(cl)
 
     # Create the seed vector using the seed list
     seeds <- createSeedVector(network, seedList, binarize = binarize)
@@ -74,11 +74,12 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
     for(recoverSize in recoverSizeVec) {
 
         # Initialize the vector that will hold the AUROC values
-        #procTemp <- rep(NA,nRep)
+        procTemp <- rep(NA,nRep)
 
         recoverN <- max(floor(recoverSize*length(seedGeneInds)),1)
         
-        procTemp <- foreach(i = 1:nRep, .combine = 'c') %dopar% {
+        #procTemp <- foreach(i = 1:nRep, .combine = 'c') %dopar% {
+        for(i in 1:nRep) {
 
             # Copy the master seed vector
             seedVecTemp <- seedVecMaster
@@ -109,7 +110,8 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
             netPropNorm <- netPropNorm[-usedSeedGenes]
 
             # Compute AUROC with the auroc package (should maybe specify the direction of the ROC curve)
-            pROC::roc(response = recoverGenesVec, predictor = netPropNorm, quiet = TRUE)$auc
+            procTemp[i] <- pROC::roc(response = recoverGenesVec, predictor = netPropNorm, quiet = TRUE)$auc
+
    
         }
         
@@ -126,7 +128,7 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
     resVec["failedReplicates"] <- NAcount
 
     # Stop the cluster
-    stopCluster(cl)
+    #stopCluster(cl)
 
     return(resVec) # names vector with mean, sd, max, min for each recover size
 

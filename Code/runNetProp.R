@@ -2,7 +2,7 @@
 library(igraph)
 library(dplyr)
 
-netpropPath <- "/home/gummi/netprop"
+netpropPath <- "/cluster/home/gmagnusson/netprop"
 
 # Load the netprop functions
 source(paste0(netpropPath,"/Code/NetPropFuncs.R"))
@@ -54,12 +54,20 @@ normList <- list(list(NULL,NULL,"noNorm"),
                 list(permuteTestNormalize,settingsPerm2,"permuteNormDegree"))
 
 
-# Run auroc test for each trait for each normalization method
+library(doParallel)
+library(foreach)
+
+# Register the parallel backend
+no_cores <- min(30, detectCores())
+cl <- makeCluster(no_cores)
+registerDoParallel(cl)
+
 for(BINARIZE in c(TRUE)) {
     for(NORMFUNC in normList) {
-        aurocs <- list()
         print(paste0("Started binarize: ", BINARIZE, " NormFunc: ", NORMFUNC[[3]] ))
-        for(trait in unique(assocDataFilt10$diseaseId)) {
+
+        # Replace the outer for loop with a foreach loop
+        aurocs <- foreach(trait = unique(assocDataFilt10$diseaseId), .combine = 'list', .packages = 'dplyr') %dopar% {
 
             assocDataFiltTemp <- assocDataFilt10 %>% filter(diseaseId == trait)
 
@@ -69,18 +77,16 @@ for(BINARIZE in c(TRUE)) {
 
             diseaseName <- diseaseMappings[which(diseaseMappings$id == trait),4] 
 
-            aurocs[[trait]] <- c(diseaseName, 
-                                    avgAUROC(network = intGraph,
-                                            seedList = seedList,
-                                            nRep = 25,
-                                            recoverSizeVec = c(0.25, 0.5, 0.75, 0.9),
-                                            binarize = BINARIZE,
-                                            NormFunc = NORMFUNC[[1]],
-                                            settingsForNormFunc = NORMFUNC[[2]]))
-
-
-            #print(paste("Finished trait ", diseaseName, " with ", sum(seedsInd), sep = ""))
+            c(trait,diseaseName, 
+              avgAUROC(network = intGraph,
+                       seedList = seedList,
+                       nRep = 25,
+                       recoverSizeVec = c(0.25, 0.5, 0.75, 0.9),
+                       binarize = BINARIZE,
+                       NormFunc = NORMFUNC[[1]],
+                       settingsForNormFunc = NORMFUNC[[2]]))
         }
+
         print(paste0("Finished binarize: ", BINARIZE, " NormFunc: ", NORMFUNC[[3]] ))
         binned <- ifelse(BINARIZE, "_binarized_", "_weighted_")
 
@@ -88,3 +94,5 @@ for(BINARIZE in c(TRUE)) {
     }
 }
 
+# Stop the cluster
+stopCluster(cl)
