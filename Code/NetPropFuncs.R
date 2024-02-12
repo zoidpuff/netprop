@@ -1,6 +1,8 @@
 
 library(dplyr)
 library(igraph)
+library(doParallel)
+library(foreach)
 
 # Function that takes in a seed list that is a list of 3 vectors, 
 #   1st vector is the seed genes, 2nd vector is the seed scores, 
@@ -9,10 +11,16 @@ library(igraph)
 
 createSeedVector <- function(network, seedList, binarize = TRUE) {
 
+    # Check seed genes are all unique
+    if(length(unique(seedList[[1]])) != length(seedList[[1]])) {
+        print("Seed genes are not unique")
+        return(NULL)
+    }
+
     # Get the seed genes indices in the network from the seed list
     seedGenes <- seedList[[1]][which(seedList[[3]])]
 
-    seedGeneInds <- match(seedGenes,V(network)$name)
+    seedGeneInds <- match(seedGenes,igraph::V(network)$name)
 
     seedGeneScores <- seedList[[2]][which(seedList[[3]])]
 
@@ -27,7 +35,7 @@ createSeedVector <- function(network, seedList, binarize = TRUE) {
     }
 
     # Create the seed vector 
-    seedVecMaster <- rep(0, length(V(network)))
+    seedVecMaster <- rep(0, length(igraph::V(network)))
 
     if(binarize) {
         seedGeneScores <- rep(1,length(seedGeneScores))
@@ -43,6 +51,10 @@ return(list(seedVecMaster,seedGeneInds,seedGeneScores))
 
 avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,NormFunc = NULL,settingsForNormFunc) {
 
+    no_cores <- detectCores()
+    cl <- makeCluster(no_cores)
+    registerDoParallel(cl)
+
     # Create the seed vector using the seed list
     seeds <- createSeedVector(network, seedList, binarize = binarize)
     seedVecMaster <- seeds[[1]] # Vector of of length V(network) were only seed genes are non zero
@@ -56,16 +68,16 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
     nameTempl <- c("mean","sd","max","min")
 
     NAcount <- 0
+
     # For each recover size (proportion of seed genes that are hidden)
     for(recoverSize in recoverSizeVec) {
 
         # Initialize the vector that will hold the AUROC values
-        procTemp <- rep(NA,nRep)
+        #procTemp <- rep(NA,nRep)
 
         recoverN <- max(floor(recoverSize*length(seedGeneInds)),1)
-
-        # For each replicate
-        for(i in 1:nRep){
+        
+        procTemp <- foreach(i = 1:nRep, .combine = 'c') %dopar% {
 
             # Copy the master seed vector
             seedVecTemp <- seedVecMaster
@@ -87,7 +99,7 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
             }
 
             # Create a vector that indicates which genes are genes were omitted from the seed vector 
-            recoverGenesVec <- rep(FALSE, length(V(network)))
+            recoverGenesVec <- rep(FALSE, length(igraph::V(network)))
             recoverGenesVec[RecoverInds] <- TRUE
 
             # Remove the seed genes that were not omitted from the seed vector, as they will always score high
@@ -95,21 +107,15 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
             recoverGenesVec <- recoverGenesVec[-usedSeedGenes]
             netPropNorm <- netPropNorm[-usedSeedGenes]
 
-            # Check for NA in the score vector (can happen if the normalization function fails)
-            if(any(is.na(netPropNorm))) {
-                print("NA in score vector")
-                NAcount <- NAcount + 1
-                next
-            }
-
             # Compute AUROC with the auroc package (should maybe specify the direction of the ROC curve)
-            rocTmp <- pROC::roc(response = recoverGenesVec, predictor = netPropNorm, quiet = TRUE)
-            procTemp[i] <- pROC::auc(rocTmp)
-
+            pROC::roc(response = recoverGenesVec, predictor = netPropNorm, quiet = TRUE)$auc
+   
         }
         
         # Compute the mean, sd, max, and min of the AUROC values for the replicates
         resVecTemp <- c(mean(procTemp),sd(procTemp),max(procTemp),min(procTemp))
+
+        NAcount <- sum(is.na(procTemp)) + NAcount
 
         # Add the results to the result vector
         names(resVecTemp) <- paste0(nameTempl,"_",recoverSize)

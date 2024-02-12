@@ -32,6 +32,8 @@ assocDataFilt10 <- assocData %>%
                             filter(n() >= 10) %>%
                             ungroup()
 
+assocDataFilt10 <- unique(assocDataFilt10[,c("diseaseId","targetId")])
+
 rm(assocData)
 
 # Load the EFO to description mapping
@@ -50,9 +52,9 @@ for(BINARIZE in c(TRUE,FALSE)) {
 
             assocDataFiltTemp <- assocDataFilt10 %>% filter(diseaseId == trait)
 
-            seedsInd <- assocDataFiltTemp$score >= 0.5
+            seedsInd <- rep(TRUE,nrow(assocDataFiltTemp))
 
-            seedList <- list(assocDataFiltTemp$targetId, assocDataFiltTemp$score, seedsInd)
+            seedList <- list(assocDataFiltTemp$targetId, rep(1,length(seedsInd)), seedsInd)
 
             diseaseName <- diseaseMappings[which(diseaseMappings$id == trait),4] 
 
@@ -76,9 +78,9 @@ for(SETTINGS in list(settings1,settings2)) {
 
         assocDataFiltTemp <- assocDataFilt10 %>% filter(diseaseId == trait)
 
-        seedsInd <- assocDataFiltTemp$score >= 0.5
+        seedsInd <- rep(TRUE,nrow(assocDataFiltTemp))
 
-        seedList <- list(assocDataFiltTemp$targetId, assocDataFiltTemp$score, seedsInd)
+        seedList <- list(assocDataFiltTemp$targetId, rep(1,length(seedsInd)), seedsInd)
 
         diseaseName <- diseaseMappings[which(diseaseMappings$id == trait),4] 
 

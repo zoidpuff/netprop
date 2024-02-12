@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH -n 16
+#SBATCH -n 10
 #SBATCH --time=3-00:00:00
-#SBATCH --mem-per-cpu=1000
+#SBATCH --mem-per-cpu=2000
 #SBATCH --tmp=4000                        # per node!!
 #SBATCH --job-name=netPropAUROC
 #SBATCH --output=netPropAUROC.out

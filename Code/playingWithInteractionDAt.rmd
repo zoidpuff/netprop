@@ -70,7 +70,7 @@ types <- table(stringr::str_split(assocData$diseaseId, pattern = "_", simplify =
 # Filter out only EFO terms
 
 assocDataFilt <- assocData %>% filter(stringr::str_split(diseaseId, pattern = "_", simplify = TRUE)[,1] == "EFO")
-
+assocDataFiltOrpha <- assocData %>% filter(stringr::str_split(diseaseId, pattern = "_", simplify = TRUE)[,1] == "Orphanet")
 length(unique(assocDataFilt$diseaseId))
 
 test_trait<- "EFO_0001073"
@@ -357,6 +357,20 @@ DescTools::Entropy(permuteVals[[1]]) # IS the distribution of the p-values unifo
 
 ```{r }
 
+# Read in the association data by source dirce
+
+assocDataBySource <- read.csv("/home/gummi/netprop/data/associationByDatasourceDirect.csv", stringsAsFactors = FALSE)
+clinGenOnly <- assocDataBySource %>% filter(datasourceId %in% c("clingen","orphanet"))
+
+# Mape the diseaseId to the disease name 
+diseaseMappings <- read.csv("/home/gummi/netprop/phenotypeMapping.csv", stringsAsFactors = FALSE)
+clinGenOnly <- merge(clinGenOnly, diseaseMappings, by.x = "diseaseId", by.y = "id")
+
+# Count the number of disesases for for orphanet and clingen
+length(unique(assocDataBySource[assocDataBySource$datasourceId %in% c("orphanet"), "diseaseId"]))
+
+
+
 ```
 
 ```{r }
@@ -561,3 +575,35 @@ ggplot(aurocsLongDF, aes(x = PercentDropped, y = vals, fill = PercentDropped)) +
 
 
 ```
+
+
+```{r }
+
+# Look at some of the results from the results folder
+
+# Load the csvs
+
+library(dplyr)
+library(ggplot2)
+
+binarizedECnorm <- read.csv("/home/gummi/netprop/results/aurocResults_binarized_ECnormalized.csv")
+binarized <- read.csv("/home/gummi/netprop/results/aurocResults_binarized_unnormalized.csv")
+weightedECnorm <- read.csv("/home/gummi/netprop/results/aurocResults_weighted_ECnormalized.csv")
+weighted <- read.csv("/home/gummi/netprop/results/aurocResults_weighted_unnormalized.csv")
+
+# combine the dataframes into one
+
+
+
+compareDF <- data.frame("binarizedECnorm_mean" = binarizedECnorm$mean_0.75,
+                        "binarized_mean" = binarized$mean_0.75,
+                        "weightedECnorm_mean" = weightedECnorm$mean_0.75,
+                        "weighted_mean" = weighted$mean_0.75,
+                        "binarizedECnorm_sd" = binarizedECnorm$sd_0.75,
+                        "binarized_sd" = binarized$sd_0.75,
+                        "weightedECnorm_sd" = weightedECnorm$sd_0.75,
+                        "weighted_sd" = weighted$sd_0.75)
+
+tidyr::pivot_longer(compareDF,cols = everything()) %>% ggplot(aes(x = name,y = value,fill = name)) + geom_boxplot() + theme_bw()
+
+`
