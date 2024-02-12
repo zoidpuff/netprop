@@ -51,7 +51,7 @@ return(list(seedVecMaster,seedGeneInds,seedGeneScores))
 
 avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,NormFunc = NULL,settingsForNormFunc) {
 
-    no_cores <- min(detectCores(),10)
+    no_cores <- min(detectCores(),16)
 
     cl <- makeCluster(no_cores)
     registerDoParallel(cl)
