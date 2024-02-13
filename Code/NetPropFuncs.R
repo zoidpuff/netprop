@@ -125,10 +125,16 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
    
         }
         
-        # Compute the mean, sd, max, and min of the AUROC values for the replicates
-        resVecTemp <- c(mean(procTemp),sd(procTemp),max(procTemp),min(procTemp))
 
         NAcount <- sum(is.na(procTemp)) + NAcount
+
+        if(sum(is.na(procTemp)) == nRep) {
+            resVecTemp <- rep(NA,4)
+         } else {
+            # Compute the mean, sd, max, and min of the AUROC values for the replicates
+            resVecTemp <- c(mean(procTemp),sd(procTemp),max(procTemp),min(procTemp))
+         }
+
 
         # Add the results to the result vector
         names(resVecTemp) <- paste0(nameTempl,"_",recoverSize)
@@ -272,7 +278,6 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
                 # Print the number of seeds the number of buckets and the sizes of the buckets
                 errString <- paste0("Number of seeds: ", length(seedDegrees), " Number of buckets: ", length(nodesInBucketsList), " Sizes of buckets: ", paste0(bucketSizes,collapse = ", "))
                 warning(errString)
-                # Quit the function
                 return(rep(NA,length(netPropTRUE)))
             }
         }
@@ -338,7 +343,7 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
     }
 
     if(any(includedVec == 1)) {
-        print("Atleast one node was always sampled, likely because it was alone in a bucket (no other node with similar degree)")
+        warning("Atleast one node was always sampled, likely because it was alone in a bucket (no other node with similar degree)")
     }
 
     permutationScores <- countVec/includedVec
