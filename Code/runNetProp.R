@@ -64,6 +64,7 @@ registerDoParallel(cl)
 
 for(BINARIZE in c(TRUE)) {
     for(NORMFUNC in normList) {
+        if(NORMFUNC[[3]] != "permuteNormDegree") {next}
         print(paste0("Started binarize: ", BINARIZE, " NormFunc: ", NORMFUNC[[3]] ))
 
         # Replace the outer for loop with a foreach loop
