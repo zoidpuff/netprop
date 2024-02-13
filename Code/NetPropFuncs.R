@@ -268,7 +268,10 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
             } 
 
             if(retryCount > 20) {
-                print("Failed to create buckets with minBucketSize, exiting")
+                warning("Failed to create buckets with minBucketSize, exiting")
+                # Print the number of seeds the number of buckets and the sizes of the buckets
+                errString <- paste0("Number of seeds: ", length(seedDegrees), " Number of buckets: ", length(nodesInBucketsList), " Sizes of buckets: ", paste0(bucketSizes,collapse = ", "))
+                warning(errString)
                 # Quit the function
                 return(rep(NA,length(netPropTRUE)))
             }
@@ -347,11 +350,29 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
 # A function that takes in a network, a dataframe of gene to disease associations, a cuttoff value value and a normalzation function
 # Returns a list of lists, each list contains network propagation scores for a 
 
-runNetProp <- function(network, assocData, cutoff,  binarize = TRUE, damping = 0.85) {
-
+runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 10),
+                         binarize = TRUE, damping = 0.85, NormFunc = NULL, settingsForNormFunc = NULL) {
 
     # Create a list to hold the results
     resList <- list()
+
+    # Filter the association data for diseases that have at least n seed genes with a score >= cutoff
+    assocDataFilt <- assocData %>% 
+                            filter(score >= cutoff[["value"]]) %>% 
+                            group_by(diseaseId) %>% 
+                            filter(n() >= cutoff[["number"]]) %>%
+                            ungroup()
+
+    # Ensure that the association data is unique
+    if( nrow(unique(assocDataFilt[,c("diseaseId","targetId")])) != nrow(assocDataFilt)) {
+        print("Association contains duplicates diseaseId-targetId pairs")
+        print("Merging duplicates (mean of scores)")
+        assocDataFilt <- assocDataFilt %>% 
+                        group_by(diseaseId,targetId) %>% 
+                        summarise(score = mean(score)) %>% 
+                        ungroup()
+
+    }
 
     # For each disease in the association data
     for(disease in unique(assocData$diseaseId)) {
@@ -360,10 +381,20 @@ runNetProp <- function(network, assocData, cutoff,  binarize = TRUE, damping = 0
         assocDataFiltTemp <- assocData %>% filter(diseaseId == disease)
 
         # Create a seed list from the association data
-        seedList <- list(assocDataFiltTemp$targetId, rep(1,length(assocDataFiltTemp$targetId)), rep(TRUE,length(assocDataFiltTemp$targetId)))
+        seedList <- list(assocDataFiltTemp$targetId, assocDataFiltTemp$score, rep(TRUE,nrow(assocDataFiltTemp)))
 
-        # Run the avgAUROC function
-        resList[[disease]] <- avgAUROC(network, seedList, nRep, recoverSizeVec, binarize = binarize, NormFunc = NormFunc, settingsForNormFunc)
+        # Create seed vector using the seed list
+        seeds <- createSeedVector(network, seedList, binarize = binarize)
+
+        # Run network propagation with the seed vector
+        netProp <- igraph::page_rank(network, directed = FALSE, damping = damping, personalized = seeds[[1]])
+
+        if(!is.null(normFunc)) {
+            netProp <- normFunc(network, seeds[[1]], netProp, settingsForNormFunc)
+        }
+
+        # Add the results to the result list
+        resList[[disease]] <- netProp
 
     }
 

@@ -68,7 +68,7 @@ for(BINARIZE in c(TRUE)) {
         print(paste0("Started binarize: ", BINARIZE, " NormFunc: ", NORMFUNC[[3]] ))
 
         # Replace the outer for loop with a foreach loop
-        aurocs <- foreach(trait = unique(assocDataFilt10$diseaseId), .combine = 'rbind', .packages = 'dplyr') %dopar% {
+        aurocs <- foreach(trait = unique(assocDataFilt10$diseaseId), .combine = 'rbind', .packages = 'dplyr',.errorhandling = "remove") %dopar% {
 
             assocDataFiltTemp <- assocDataFilt10 %>% filter(diseaseId == trait)
 
