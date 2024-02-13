@@ -64,6 +64,11 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
     # Get the number of genes that are in the seed list but not in the network (matching with ENSEMBL ids)
     missingGenes <- length(seedList[[1]]) - length(seedGeneInds)
 
+    if(length(seedGeneInds) < 3) {
+        print("2 or less seed genes found in network, returning NA")
+        return(rep(NA,(3+4*length(recoverSizeVec))))
+    }
+
     # Create a vector that will hold the results
     resVec <- c("nseeds"= length(seedGeneInds), "missing" = missingGenes, "failedReplicates" = 0)
     nameTempl <- c("mean","sd","max","min")
@@ -98,6 +103,11 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
                 netPropNorm <- NormFunc(network, seedVecTemp, netPropRaw, settingsForNormFunc)
             } else {
                 netPropNorm <- netPropRaw
+            }
+
+            if (sum(is.na(netPropNorm)) > length(netPropNorm)/2) {
+                warning("More than half of the network propagation scores are NA, skipping replicate")
+                next
             }
 
             # Create a vector that indicates which genes are genes were omitted from the seed vector 
