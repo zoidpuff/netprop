@@ -77,8 +77,9 @@ for(BINARIZE in c(TRUE)) {
             seedList <- list(assocDataFiltTemp$targetId, assocDataFiltTemp$score, seedsInd)
 
             diseaseName <- diseaseMappings[which(diseaseMappings$id == trait),4] 
+            if(length(diseaseName) == 0) {diseaseName <- NA}
 
-            c(trait,diseaseName, 
+            c("trait" = trait,"name" = diseaseName, 
               avgAUROC(network = intGraph,
                        seedList = seedList,
                        nRep = 25,
