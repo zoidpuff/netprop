@@ -1,0 +1,804 @@
+---
+title: "Playing With OpenTargets DATA"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+netPropPath <- '/home/gummi/netprop'
+library(igraph)
+library(dplyr)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+```
+
+
+## Create the graph
+```{r }
+
+intData <- read.csv(paste0(netPropPath,"/data/interactionAll.csv"), stringsAsFactors = FALSE)
+
+# Filter out any row that have scoring less then 0.75 (perhaps other values should be tested)
+
+intDataFilt  <- intData %>% filter(!(sourceDatabase == "string" & scoring <= 0.4)) # 0.4 only for stringdb
+
+rm(intData)
+
+intGraph <- graph.data.frame(intDataFilt[,c("targetA","targetB" )], directed = FALSE)
+
+# Remove any self loops and redundant edges
+
+intGraph <- simplify(intGraph, remove.multiple = TRUE, remove.loops = TRUE)
+
+# remove orphan nodes
+
+intGraph <- delete.vertices(intGraph, which(degree(intGraph) == 0))
+```
+
+
+
+```{r }
+
+# Load the association data
+
+assocDataBySource <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE)
+assocDataOverall <-  read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE)
+
+assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId == "orphanet")
+
+
+
+res <- runNetProp(network = intGraph,
+                    assocData = assocDataRareDiseases,
+                    cutoff = c("value" = 0.5, "number" = 5),
+                    binarize = TRUE,
+                    damping = 0.85,
+                    NormFunc = NULL,
+                    settingsForNormFunc = NULL)
+
+
+resDF <- do.call(rbind, res)
+```
+
+```
+
+
+
+
+
+```
+
+
+```{r }
+
+
+
+```
+
+
+
+```
+
+```{r }
+
+compute_values <- function(dataset, score_cutoff, number_cutoff, datasource = "all") {
+  
+    if(datasource != "all") {
+        dataset <- filter(dataset, datasourceId == datasource)
+    }
+
+
+
+    dataset <- filter(dataset, score >= score_cutoff)
+
+    dataset <- dataset %>% 
+                group_by(diseaseId) %>% 
+                filter(n() >= number_cutoff) %>%
+                ungroup() 
+
+    if(nrow(dataset) < 5) return(c("datasource" = datasource,
+                                    "score_cutoff" = score_cutoff,
+                                    "number_cutoff" = number_cutoff,  
+                                    "pearsons" = NA,
+                                    "lmPval" = NA))
+
+    return(c("datasource" = datasource,
+            "score_cutoff" = score_cutoff,
+            "number_cutoff" = number_cutoff,
+            "pearsons" = cor(dataset$degree , dataset$score), # method = "pearson"
+            "lmPval" = summary(lm(dataset$score ~ dataset$degree))$coefficients[2,4] ))
+}
+
+dataset1 <- read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE) #%>% filter(stringr::str_split(diseaseId, pattern = "_", simplify = TRUE)[,1] == "EFO")
+
+dataset2 <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE) 
+#dataset2 <- read.csv("/home/gummi/netprop/data/20240101_variantsEFO_MONDO_withSource_updatedJBTS.csv")
+
+
+inds <- match(dataset1$targetId, V(intGraph)$name)
+inds2 <- match(dataset2$targetId, V(intGraph)$name)
+
+dataset1$degree <- degree(intGraph)[inds]
+dataset2$degree <- degree(intGraph)[inds2]
+
+dataset1 <- filter(dataset1, !is.na(degree))
+dataset2 <- filter(dataset2, !is.na(degree))
+
+res <- lapply(c(0.3,0.4,0.5,0.6,0.7,0.8), function(x) {
+  lapply(c(1,5,10,20), function(y) {
+    compute_values(dataset1, x, y,"all")
+  })
+}) 
+
+resDF <- res %>% unlist(recursive=F) %>% do.call(rbind, .) %>% as.data.frame() %>% mutate(across(.fns = readr::parse_guess)) 
+
+res2 <- lapply(c(0.3,0.4,0.5,0.6,0.7,0.8), function(x) {
+  lapply(c(1,5,10,20), function(y) {
+    compute_values(dataset2, x, y,"all")
+  })
+}) 
+
+resDF2 <- res2 %>% unlist(recursive=F) %>% do.call(rbind, .) %>% as.data.frame() %>% mutate(across(.fns = readr::parse_guess)) 
+
+
+res3 <- lapply(c(0.3,0.4,0.5,0.6,0.7,0.8), function(x) {
+  lapply(unique(dataset2$datasourceId), function(y) {
+    compute_values(dataset2, x, 0.5 ,datasource = y)
+  })
+}) 
+
+resDF3 <- res3 %>% unlist(recursive=F) %>% do.call(rbind, .) %>% as.data.frame() %>% mutate(across(.fns = readr::parse_guess)) 
+
+# Plot the results as a heatmap
+
+library(ggplot2)
+
+resDF$score_cutoff <- factor(resDF$score_cutoff)
+
+resDF$number_cutoff <- factor(resDF$number_cutoff)
+
+scaleS <- c(min(c(resDF$pearsons, resDF2$pearsons),na.rm=T), max(c(resDF$pearsons, resDF2$pearsons),na.rm=T))
+
+a <- ggplot(resDF, aes(x = score_cutoff, y = number_cutoff, fill = pearsons)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "blue",limits=scaleS) +
+  theme_minimal() +
+  labs(title = "Pearsons correlation in overall dataset",
+       x = "Score cutoff",
+       y = "Number cutoff")
+
+resDF2$score_cutoff <- factor(resDF2$score_cutoff)
+
+resDF2$number_cutoff <- factor(resDF2$number_cutoff)
+
+b <- ggplot(resDF2, aes(x = score_cutoff, y = number_cutoff, fill = pearsons)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "blue",limits=scaleS) +
+  theme_minimal() +
+  labs(title = "Pearson's correlation in ByDatasource datasets",
+       x = "Score cutoff",
+       y = "Number cutoff")
+
+
+cowplot::save_plot("heatmap.jpg", cowplot::plot_grid(a,b), base_height = 6, base_width = 10,background = "white")
+
+
+resDF3$datasource <- factor(resDF3$datasource)
+
+resDF3$score_cutoff <- factor(resDF3$score_cutoff)
+
+c <- ggplot(resDF3, aes(x = score_cutoff, y = datasource, fill = pearsons)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "red", mid="white",high = "blue",midpoint = 0)+
+  theme_minimal() +
+  labs(title = "Pearsons correlation in accross datasources",
+       x = "Score cutoff",
+       y = "Datasource") +
+    scale_y_discrete(limits = rev(levels(resDF3$datasource))) +
+    # put the legend on the left
+    theme(legend.position = "left") 
+
+
+# Plot the distribution of the scores by datasource with a density plot faceted by datasource and log transform the y 
+dataset2$datasourceId_f <- factor(dataset2$datasourceId,levels = levels(resDF3$datasource ))
+d <- ggplot(dataset2, aes(x = score, fill = datasourceId)) +
+  geom_histogram() +
+  facet_grid(rows="datasourceId_f") +
+  theme_minimal() +
+  labs(title = "Distribution of scores by datasource",
+       x = "Score",
+         y = "Count") +
+    scale_y_log10() +
+    theme(legend.position = "none") +
+    theme(strip.text.y.right = element_text(angle = 0)) +
+    # remove y axis tickmarks
+    theme(axis.text.y = element_blank(),
+          axis.ticks.y = element_blank())
+
+
+
+ggsave(cowplot::plot_grid(c,d), filename = "heatmap2.jpg", width = 12, height = 6, units = "in", dpi = 300)
+
+```
+
+```{r }
+
+
+
+
+
+
+# Plot a scatter density plot of the degree and the score in overall dataset with a regression line 
+
+#ggsave(ggplot(dataset1, aes(x = log2(degree), y = score)) +
+ # geom_density_2d_filled() +
+  #theme_minimal() +
+  #labs(title = "Scatter density plot of degree and score in overall dataset",
+  #     x = "Degree",
+  #     y = "Score"), filename = "degree_score_density.png")
+
+# Function that takes in a vector and performs a log1p transformation n times
+
+log1pNtimes <- function(x,N) {
+    for(i in 1:N) {
+        x <- log1p(x)
+    }
+    return(x)
+}
+
+density <- MASS::kde2d(log2(dataset1$degree), dataset1$score,n=60, lims = c(range(log2(dataset1$degree)),range(dataset1$score)))  
+
+cutDense <- density$z
+cuttoff <- quantile(c(cutDense), 0.95)
+cutDense[cutDense > cuttoff] <- cuttoff
+ image(density$x,density$y,log1pNtimes(cutDense,100),col = terrain.colors(100), xlab = "log2(Degree)", ylab = "Score", main = "Density plot of degree and score in Overall dataset")
+
+
+density2 <- MASS::kde2d(log2(dataset2$degree), dataset2$score,n=60, lims = c(range(log2(dataset1$degree)),range(dataset1$score)))  
+
+cutDense <- density2$z
+cuttoff <- quantile(c(cutDense), 0.95)
+cutDense[cutDense > cuttoff] <- cuttoff
+  image(density2$x,density2$y,log1pNtimes(cutDense,100),col = terrain.colors(100), xlab = "log2(Degree)", ylab = "Score", main = "Density plot of degree and score in BySource dataset")
+
+```
+
+
+```{r }
+
+
+# Load the diseases.rdata
+
+load(paste0(netPropPath,"/data/diseases.rdata"))
+
+# Write a for loop that traverses the diseases and gathers the id for each element in the children list, adds a row to a dataframe with the disease id and the child id
+
+# Function that returns a list of id and children pairs
+getChildren <- function(ind) {
+    disease <- diseaseDF$id[ind]
+    listOfChildren <- unlist(diseaseDF$children[ind])
+
+    if(length(listOfChildren) == 0) return(data.frame(disease = disease, child = NA))
+
+    return(data.frame(disease = disease, child = listOfChildren))
+}
+
+
+# Create a list of all the children of the diseases
+
+diseaseChildrenDF <- lapply(1:length(diseaseDF$id), getChildren) %>% do.call(rbind, .)	
+
+dim(diseaseChildrenDF)
+
+# Remove any rows that have NA in the child column
+
+diseaseChildrenDF <- filter(diseaseChildrenDF, !is.na(child))
+
+dim(diseaseChildrenDF)
+
+# Create a graph from the diseaseChildrenDF
+
+diseaseGraph <- graph_from_data_frame(diseaseChildrenDF,  directed = TRUE)
+
+igraph::is.connected(diseaseGraph)
+
+# Clean the graph by removing any self loops and redundant edges
+
+diseaseGraph <- igraph::simplify(diseaseGraph, remove.multiple = TRUE, remove.loops = TRUE)
+
+# Find the connected components of the graph
+
+diseaseComponents <- igraph::components(diseaseGraph)
+
+# Theyre are 2 components, one with most of the nodes and one with just a few, examine smaller one
+
+weirdos <- V(diseaseGraph)[which(diseaseComponents$membership == 2)]
+
+huih <- diseaseDF[which(diseaseDF$id %in% weirdos$name),]
+
+# The smaller component seems to be only medical procedures, so not needed for this analysis
+
+diseaseGraph <- delete.vertices(diseaseGraph, which(diseaseComponents$membership == 2))
+
+# Check if the graph is connected
+
+igraph::is.connected(diseaseGraph)
+
+
+diseaseDF[which(diseaseDF$id %in% unique(unlist(diseaseDF$therapeuticAreas))),c("id","name")]
+
+a <- sort(table(unlist(diseaseDF$therapeuticAreas)),decreasing=T)
+
+# Get the names from the diseaseDF using the names of a
+
+b <- diseaseDF$name[match(names(a),diseaseDF$id)]
+
+# Create a dataframe with the counts and the names
+
+c <- data.frame(count = a, name = b)
+
+# Create a convenicance mappings
+idToName <- setNames(diseaseDF$name, diseaseDF$id)
+idToTherapeuticArea <- setNames(diseaseDF$therapeuticAreas, diseaseDF$id)
+idToDescription <- setNames(diseaseDF$description, diseaseDF$id)
+
+### Remove hub nodes from graph
+# Create a sorted decreasing dataframe with the degree of each node id and name
+
+degreeDF <- data.frame(degree = degree(diseaseGraph), id = V(diseaseGraph)$name,name = idToName[V(diseaseGraph)$name]) %>% arrange(desc(degree))
+
+# View(degreeDF)
+
+# Remove nodes with degree greater then 29
+
+diseaseGraphPruned <- delete.vertices(diseaseGraph, which(degree(diseaseGraph) > 29))
+
+
+getRelatedDiseases <- function(id, graph) {
+  # Check id is in graph
+  if(!(id %in% V(graph)$name)) {
+    print("id not in graph")
+    return(list(NA,NA))
+  }
+
+  # If the node is a leaf node
+  if(degree(graph,id,mode="out") == 0) {
+      type <- "leaf"
+      # Get the parents of the node
+      parents <- unlist(igraph::neighborhood(graph, order = 1, nodes = id, mode = "in"))
+      related <- names(unlist(igraph::neighborhood(graph, order = 1, nodes = parents, mode = "out")))
+    
+  } else {
+    type <- "internal"
+     related <- names(unlist(igraph::neighborhood(graph, order = 200, nodes = id, mode = "out")))
+
+  }
+    # Remove the node itself
+    related <- related[related != id]
+
+    if(length(related) == 0){
+      return(list(type,NA))
+      }
+
+    return(list(type,related))
+}
+
+
+idToName[getRelatedDiseases("MONDO_0013372",diseaseGraph)[[2]]]
+#idToName[getRelatedDiseases("EFO_0005207",diseaseGraph)]
+
+
+```
+
+
+
+
+```{r }
+
+relationships <- lapply(unique(assocDataOverall$diseaseId), function(x) {
+  res <- getRelatedDiseases(x, diseaseGraphPruned)
+  if(any(is.na( res[[2]] ))) {
+    return( data.frame(term1 = x, term2 = NA, type = res[[1]]))
+    }
+  return(data.frame(term1 = x, term2 = res[[2]] ,type = res[[1]] ))
+})
+
+relationshipsDF <- do.call(rbind, relationships) %>% filter(!is.na(term2))
+
+# Rowwise, swap the term1 and term2 so that lexically the term1 is less then term2
+
+relationshipsDFunique <- relationshipsDF %>% 
+                        rowwise() %>% 
+                        mutate(term1_abs = min(term1,term2), term2_abs = max(term1,term2)) %>% 
+                        ungroup() %>%
+                        select(term1_abs, term2_abs) %>%
+                        distinct() %>%
+                        rename(term1 = term1_abs, term2 = term2_abs) %>%
+                        as.data.frame()
+
+embeddings <- read.csv(paste0(netPropPath,"/data/vectors_with_idsMedBert.csv"), stringsAsFactors = FALSE) %>%
+              tibble::column_to_rownames(var = "id")
+
+
+# For eaach row in relationshipsDFunique, compute the cosine similarity between the two diseases and add it to the dataframe
+
+relationshipsDFunique$cosine <- apply(relationshipsDFunique, 1, function(x) { 
+  return(lsa::cosine(unlist(embeddings[x[1],]),unlist(embeddings[x[2],])))
+})
+
+# Save the relationshipsDFunique to a csv file
+
+#write.csv(relationshipsDFunique, "relationships.csv", row.names = FALSE)
+
+relationshipsDFunique$term1Name <- idToName[relationshipsDFunique$term1]
+relationshipsDFunique$term2Name <- idToName[relationshipsDFunique$term2]
+
+write.csv(arrange(relationshipsDFunique,desc(cosine)), "relationshipsWithNames.csv", row.names = FALSE)
+
+
+
+
+# Filter out terms that theraputic areas is only meausrments
+#relationshipsDFunique <- relationshipsDFunique %>% filter(all(unlist(idToTherapeuticArea[term1]) != "EFO_0001444") & all(unlist(idToTherapeuticArea[term2]) != "EFO_0001444"))	
+# Create a true/false vector with sapply
+tfVec <- sapply(1:nrow(relationshipsDFunique), function(x) {
+  term1 <- relationshipsDFunique$term1[x]
+  term2 <- relationshipsDFunique$term2[x]
+  # Check if the therapeutic areas of the two diseases have any commonalities
+  all(unlist(idToTherapeuticArea[term1]) != "EFO_0001444") & all(unlist(idToTherapeuticArea[term2]) != "EFO_0001444")
+})
+
+
+
+
+
+# Gatherall the names and descriptions of the diseases concatnate them and save them in a csv file
+
+diseaseDF$description <- as.character(diseaseDF$description)
+
+diseaseDF$description[is.na(diseaseDF$description)] <- "No description available"
+
+diseaseDF$name <- as.character(diseaseDF$name)
+
+DiseaseStrings <- paste0(diseaseDF$name, " : ", diseaseDF$description)
+
+data.frame(id = diseaseDF$id, strings = DiseaseStrings) %>%
+  write.csv("diseaseStrings.csv", row.names = FALSE)
+
+# compute the character length of each element in the strings column
+
+
+
+
+
+# I am going to give you a pair of diseases/phenotypes and you are going to tell me if they are related or not.
+# I will give you the name of the diseases, a brief description and therapeutic areas they are associated with.
+# The diseases have already been filtered so that they should have some commonalities but I want you to tell if it reasonable to expect that
+# That a clinician would consider them related or not.
+# Some examples of a pair of diseasese that should be considered related is:
+# Example 1
+# Disease 1: ventricular septal defect 1 - Description: Any ventricular septal defect in which the cause of the disease is a mutation in the GATA4 gene. - Therapeutic Areas: genetic, familial or congenital disease, cardiovascular disease
+# Disease 2: atrial septal defect 7 - Description: Atrial septal defect (ASD) with atrioventricular conduction defects is an extremely rare genetic congenital heart disease characterized by the presence of ASD, mostly of the ostium secundum type, associated with conduction anomalies like atrioventricular block, atrial fibrillation or right bundle branch block. - Therapeutic Areas: genetic, familial or congenital disease, cardiovascular disease
+# Example 2
+
+
+
+
+
+```
+
+
+
+```{r }
+# Comapare the distance in cosine similarity between NetPropVectors and SeedVectors
+
+assocDataOverallEFO <-  read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE) %>%
+                      filter(grepl("EFO",diseaseId))
+
+# Run the netprop algorithm with the association data and the network
+res <- runNetProp(network = intGraph,
+                    assocData = assocDataOverallEFO,
+                    cutoff = c("value" = 0.5, "number" = 2),
+                    binarize = TRUE,
+                    damping = 0.85,
+                    NormFunc = NULL,
+                    settingsForNormFunc = NULL)
+
+
+resDF <- do.call(rbind, res)
+
+# Get the seed vectors
+res <- runNetProp(network = intGraph,
+                    assocData = assocDataOverallEFO,
+                    cutoff = c("value" = 0.5, "number" = 2),
+                    binarize = TRUE,
+                    damping = 0.85,
+                    NormFunc = NULL,
+                    settingsForNormFunc = NULL,
+                    returnSeedVec = TRUE)
+
+
+resSeedsDF <- do.call(rbind, res)
+
+
+
+# Filter the relationshipsDFunique table so that it only has the diseases that are rownames in resDF
+
+relationshipsDFuniqueEFO <- relationshipsDFunique %>% filter(term1 %in% rownames(resDF) & term2 %in% rownames(resDF))
+
+# Create a df of randomly selected diseases pairs from the resDF as a control
+
+randomDiseasesPairs <- sapply(1:nrow(relationshipsDFuniqueEFO), function(x) {
+  return(sample(rownames(resDF),2))
+}) %>% t() %>% as.data.frame()
+
+names(randomDiseasesPairs) <- c("term1","term2")
+
+relationshipsDFuniqueEFO <- rbind(relationshipsDFuniqueEFO[,c("term1","term2")], randomDiseasesPairs)
+
+relationshipsDFuniqueEFO$related <- c(rep("related",nrow(relationshipsDFuniqueEFO)/2),rep("random",nrow(relationshipsDFuniqueEFO)/2))
+
+# For each row in relationshipsDFuniqueEFO, compute the cosine between the two diseases resDF and resSeedsDF 
+
+relationshipsDFuniqueEFO$cosineNetProp <- apply(relationshipsDFuniqueEFO, 1, function(x) { 
+  return(lsa::cosine(unlist(resDF[x[1],]),unlist(resDF[x[2],])))
+})
+
+relationshipsDFuniqueEFO$cosineSeed <- apply(relationshipsDFuniqueEFO, 1, function(x) { 
+  return(lsa::cosine(unlist(resSeedsDF[x[1],]),unlist(resSeedsDF[x[2],])))
+})
+
+# Also do this for manhattan distance
+
+relationshipsDFuniqueEFO$manhattanNetProp <- apply(relationshipsDFuniqueEFO, 1, function(x) { 
+  return(dist(rbind(resDF[x[1],],resDF[x[2],]), method = "manhattan"))
+})
+
+relationshipsDFuniqueEFO$manhattanSeed <- apply(relationshipsDFuniqueEFO, 1, function(x) { 
+  return(dist(rbind(resSeedsDF[x[1],],resSeedsDF[x[2],]), method = "manhattan"))
+})
+
+
+
+
+
+
+library(ggplot2)
+
+# Examine the realtionships between unpropgated seed vectors and the netpropagated vectors
+
+# Plot a scatter plot between cosine similarity between NetPropVectors and SeedVectors
+
+ggplot(relationshipsDFuniqueEFO, aes(x = cosineNetProp, y = cosineSeed, fill=related)) +
+  geom_point(aes(color=related)) +
+  geom_smooth(method = "lm") +
+  ggpubr::stat_regline_equation() +
+  ggpubr::stat_cor(label.x.npc= "right") +
+  theme_minimal() +
+  labs(title = "Cosine similarity between NetPropVectors and SeedVectors",
+       x = "NetPropVectors",
+       y = "SeedVectors")
+
+# Plot a scatter plot between manhattan distance between NetPropVectors and SeedVectors
+
+ggplot(relationshipsDFuniqueEFO, aes(x = manhattanNetProp, y = manhattanSeed, fill=related)) +
+  geom_point(aes(color=related)) +
+  geom_smooth(method = "lm") +
+  ggpubr::stat_regline_equation() +
+  theme_minimal() +
+  labs(title = "Manhattan distance between NetPropVectors and SeedVectors",
+       x = "NetPropVectors",
+       y = "SeedVectors") +
+  ylim(0,quantile(relationshipsDFuniqueEFO$manhattanSeed,0.98))
+
+#  I think the reason the manhattan distance and cosine distance are so different is that the cosine 
+# is invariant to the magnitude of the vectors,and the manhattan distance is not.
+
+
+# Plot the cosine similarity between the NetPropVectors and the SeedVectors as boxplots
+
+pivotData <- relationshipsDFuniqueEFO %>% select(cosineNetProp, cosineSeed,related) %>%
+  tidyr::pivot_longer(cols = c("cosineNetProp","cosineSeed"), names_to = "type", values_to = "cosines") 
+
+pivotData %>% group_by(related,type) %>% 
+    summarise(mean = mean(cosines, na.rm = TRUE), median = median(cosines, na.rm = TRUE), sd = sd(cosines, na.rm = TRUE))
+
+ggplot(pivotData, aes(x = related, y =cosines,fill=related)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2) +
+  theme_classic() +
+  facet_wrap(~type,scale="free_y") +
+  labs(title = "Cosine similarity : Related vs Random",
+       x = "Type",
+       y = "Cosine similarity") 
+
+# Plot the manhattan distance between the NetPropVectors and the SeedVectors as boxplots
+
+pivotData <- relationshipsDFuniqueEFO %>% select(manhattanNetProp, manhattanSeed, related) %>%
+  tidyr::pivot_longer(cols = c("manhattanNetProp","manhattanSeed"), names_to = "type", values_to = "manhattans")
+
+  
+pivotData %>% group_by(related,type) %>% 
+    summarise(mean = mean(manhattans, na.rm = TRUE), median = median(manhattans, na.rm = TRUE), sd = sd(manhattans, na.rm = TRUE))
+
+ggplot(pivotData, aes( x=related, y =manhattans,fill=related)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2) +
+  theme_classic() +
+  facet_wrap(~type,scale="free_y") +
+  labs(title = "Manhattan distance : Related vs Random",
+       x = "Type",
+       y = "Manhattan distance") +
+  scale_y_log10()
+
+
+
+relationshipsDFuniqueEFO$name1 <- idToName[relationshipsDFuniqueEFO$term1]
+relationshipsDFuniqueEFO$name2 <- idToName[relationshipsDFuniqueEFO$term2]
+
+View(relationshipsDFuniqueEFO)
+    
+
+
+```
+
+
+```{r }
+
+# Comapring the netprop and semantic embedding vectors with scatter plots
+
+# Comapare the distance in cosine similarity between NetPropVectors and SeedVectors
+
+assocDataOverallEFO <-  read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE) %>%
+                      filter(grepl("EFO",diseaseId))
+
+# Run the netprop algorithm with the association data and the network
+res <- runNetProp(network = intGraph,
+                    assocData = assocDataOverallEFO,
+                    cutoff = c("value" = 0.5, "number" = 2),
+                    binarize = TRUE,
+                    damping = 0.85,
+                    NormFunc = NULL,
+                    settingsForNormFunc = NULL)
+
+
+resDF <- do.call(rbind, res)
+
+# Compute the cosine similarity matrix of resDF
+
+NetPropCosineMatrix <- lsa::cosine(t(resDF))
+
+semanticEmbeddingCosineMatrix <- lsa::cosine(t(embeddings[rownames(resDF),]))
+
+resDF <- data.frame(NetPropCosineMatrix = as.vector(NetPropCosineMatrix),
+                    semanticEmbeddingCosineMatrix = as.vector(semanticEmbeddingCosineMatrix))
+
+# Plot a scatter plot between the cosine similarity of the NetPropVectors and the semanticEmbeddingVectors
+
+ggplot(resDF, aes(x = NetPropCosineMatrix, y = semanticEmbeddingCosineMatrix)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ggpubr::stat_regline_equation() +
+  ggpubr::stat_cor(label.x.npc= "middle") +
+  theme_minimal() +
+  labs(title = "Correlation between NetPropVectors and SemanticEmbeddingVectors",
+       x = "NetPropVectors",
+       y = "SeedVectors")
+
+```
+
+HERE I AM TESTING OUT THE COMPARE DISTANCE FUNCTION. I HAVE TO LOAD THE DATA AND RUN IT.
+
+```{r }
+
+
+
+relationshipsAll <- read.csv(paste0(netPropPath,"/relationshipsWithNames.csv"), stringsAsFactors = FALSE)
+
+
+assocDataOverallEFO <-  read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE) %>%
+                      filter(grepl("EFO",diseaseId))
+
+# Run the netprop algorithm with the association data and the network
+res <- runNetProp(network = intGraph,
+                    assocData = assocDataOverallEFO,
+                    cutoff = c("value" = 0.5, "number" = 2),
+                    binarize = TRUE,
+                    damping = 0.85,
+                    NormFunc = NULL,
+                    settingsForNormFunc = NULL)
+
+
+resDF <- do.call(rbind, res)
+
+relationshipsEFO <- relationshipsAll %>% filter(term1 %in% rownames(resDF) & term2 %in% rownames(resDF))
+
+testRes <- compareDistanceMetric(as.matrix(resDF),
+                      statDistFunctionWrapper,
+                      list("method" = "manhattan"),
+                      as.matrix(relationshipsEFO[,c("term1","term2")]),
+                      10,
+                      FALSE
+                      )
+
+```
+
+
+```{r }
+# Euclidean distance
+
+testRes <- compareDistanceMetric(as.matrix(resDF),
+                      statDistFunctionWrapper,
+                      list("method" = "euclidean"),
+                      as.matrix(relationshipsEFO[,c("term1","term2")]),
+                      10,
+                      TRUE
+                      )
+# Look at the results of the testRes
+
+testRes[["summaryRelated"]]
+testRes[["summaryRandom"]]
+testRes[["ratios"]]
+testRes[["AUROC"]]
+testRes[["JSD"]]
+
+
+plot(testRes[["DensityAll"]])
+lines(testRes[["densityEstRand"]], col = "blue")
+lines(testRes[["densityEstRel"]] , col = "red")
+
+```
+
+
+
+```{r }
+
+# Manhattan distance
+
+testRes <- compareDistanceMetric(as.matrix(resDF),
+                      statDistFunctionWrapper,
+                      list("method" = "manhattan"),
+                      as.matrix(relationshipsEFO[,c("term1","term2")]),
+                      10,
+                      TRUE
+                      )
+# Look at the results of the testRes
+
+testRes[["summaryRelated"]]
+testRes[["summaryRandom"]]
+testRes[["ratios"]]
+testRes[["AUROC"]]
+testRes[["JSD"]]
+
+
+plot(testRes[["DensityAll"]])
+lines(testRes[["densityEstRand"]], col = "blue")
+lines(testRes[["densityEstRel"]] , col = "red")
+
+
+```
+
+
+
+```{r }
+# Cosine distance
+
+testRes <- compareDistanceMetric(as.matrix(resDF),
+                      cosineSimFunctionWrapper,
+                      list(),
+                      as.matrix(relationshipsEFO[,c("term1","term2")]),
+                      10,
+                      TRUE
+                      )
+# Look at the results of the testRes
+
+testRes[["summaryRelated"]]
+testRes[["summaryRandom"]]
+testRes[["ratios"]]
+testRes[["AUROC"]]
+testRes[["JSD"]]
+
+plot(testRes[["DensityAll"]])
+lines(testRes[["densityEstRand"]], col = "blue")
+lines(testRes[["densityEstRel"]] , col = "red")
+
+
+```

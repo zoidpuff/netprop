@@ -255,7 +255,8 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
 
         # While any bucket is smaller then minBucketSize or the number of buckets is not equal to the number of seed genes
         while(any(bucketSizes < minBucketSize) | (length(nodesInBucketsList) != length(seedDegrees))) {
-       
+
+
             if(degreeSampleSmoothing > 0) {
                 # Find similar bucket
                 nodesInBuckets <- sapply(allDegrees, function(x) pickSimilar(abs(x - seedDegrees),degreeSampleSmoothing))
@@ -280,6 +281,9 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
                 warning(errString)
                 return(rep(NA,length(netPropTRUE)))
             }
+            # Stop 
+            #stopifnot(!any(is.na(bucketSizes)))
+
         }
 
     
@@ -356,10 +360,12 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
 # Returns a list of lists, each list contains network propagation scores for a 
 
 runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 10),
-                         binarize = TRUE, damping = 0.85, NormFunc = NULL, settingsForNormFunc = NULL) {
-
-    # Create a list to hold the results
-    resList <- list()
+                         binarize = TRUE, damping = 0.85, NormFunc = NULL, settingsForNormFunc = NULL,returnSeedVec = FALSE) {
+    
+    # Register the parallel backend
+   # no_cores <- 4
+    #cl <- makeCluster(no_cores)
+    #registerDoParallel(cl)
 
     # Filter the association data for diseases that have at least n seed genes with a score >= cutoff
     assocDataFilt <- assocData %>% 
@@ -380,10 +386,11 @@ runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 
     }
 
     # For each disease in the association data
-    for(disease in unique(assocData$diseaseId)) {
+    resList <- list()
+      for(trait in unique(assocDataFilt$diseaseId)) {
 
         # Filter the association data for the current disease
-        assocDataFiltTemp <- assocData %>% filter(diseaseId == disease)
+        assocDataFiltTemp <- assocDataFilt %>% filter(diseaseId == trait)
 
         # Create a seed list from the association data
         seedList <- list(assocDataFiltTemp$targetId, assocDataFiltTemp$score, rep(TRUE,nrow(assocDataFiltTemp)))
@@ -391,18 +398,193 @@ runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 
         # Create seed vector using the seed list
         seeds <- createSeedVector(network, seedList, binarize = binarize)
 
+        if(returnSeedVec) {
+            resList[[trait]] <- seeds[[1]]
+            next
+        }
         # Run network propagation with the seed vector
-        netProp <- igraph::page_rank(network, directed = FALSE, damping = damping, personalized = seeds[[1]])
+        netProp <- igraph::page_rank(network, directed = FALSE, damping = damping, personalized = seeds[[1]])$vector
 
-        if(!is.null(normFunc)) {
-            netProp <- normFunc(network, seeds[[1]], netProp, settingsForNormFunc)
+        if(!is.null(NormFunc)) {
+            netProp <- NormFunc(network, seeds[[1]], netProp, settingsForNormFunc)
         }
 
-        # Add the results to the result list
-        resList[[disease]] <- netProp
+        resList[[trait]] <- netProp
+
 
     }
 
+
     return(resList)
 
+}
+
+# Function that takes as input a df of network propagation scores, distance function, and a list of related disease name pairs
+# It computes the distance between the network propagation vectors for each disease pair and for all possible pairs of diseases df
+
+
+
+compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, diseasePairs, randomSetSize,  compareALL = FALSE) {
+
+    # Make sure the netPropScores is a matrix
+    netPropScores <- as.matrix(netPropScores)
+
+    # Compute the distances for disease pairs
+    relatedVec <- rep(NA,nrow(diseasePairs))
+
+    # For each disease pair
+    for(i in 1:nrow(diseasePairs)) {
+        relatedVec[i] <- as.vector(distFunc(netPropScores[c(diseasePairs[i,1],diseasePairs[i,2]),],distFuncSettings))
+    }
+
+
+    # Get the number of possible pairs of diseases in netPropScores
+    nDiseases <- nrow(netPropScores)
+    nPairsPossible <- nDiseases*(nDiseases-1)/2
+    nPairSamples <- round(randomSetSize*nrow(diseasePairs))
+
+
+    if(nPairsPossible < nPairSamples) {
+        print("Number of pairs to sample is greater than the number of possible pairs")
+        print("Setting number of pairs to sample to the number of possible pairs")
+        nPairSamples <- nPairsPossible
+    }
+
+    proportionOfPossiblePairs <- nPairSamples/nPairsPossible
+
+    diseasePairsConcat <- apply(diseasePairs,1,function(x) paste0(sort(x),collapse = ""))
+
+    checkIfIsRelated <- function(x, dpc) {
+        sortX <- paste0(sort(x),collapse = "")
+        if(sortX %in% dpc) {
+            return(TRUE)
+        } else {
+            return(FALSE)
+        }
+    }
+
+    randSampl <- function(x,p, diseasePairsConcat) {
+        if(runif(1) < p) {
+            if(checkIfIsRelated(x,diseasePairsConcat)) {
+                return(c(NA,NA))
+            } else {
+                return(x)
+            }
+        } else {
+            return(c(NA,NA))
+        }
+    }
+
+
+
+    randomPairs <- combn(rownames(netPropScores),2,simplify = TRUE,randSampl,
+                                                                    p = proportionOfPossiblePairs,
+                                                                    diseasePairsConcat = diseasePairsConcat) %>%
+                        t() %>% 
+                        unique() %>%
+                        as.data.frame()
+
+
+    randomPairs <- randomPairs[complete.cases(randomPairs),]
+
+    randomVec <- rep(NA,nrow(randomPairs))
+
+    for(i in 1:nrow(randomPairs)) {
+        randomVec[i] <- as.vector(distFunc(netPropScores[unlist(randomPairs[i,]),],distFuncSettings))
+    }
+
+    resList <- list()
+
+    # Compute the mean and sd of the distances for the disease pairs and the random pairs
+    resList[["summaryRelated"]] <- c(summary(relatedVec),"SD." = sd(relatedVec), "n" = length(relatedVec))
+    resList[["summaryRandom"]] <- c(summary(randomVec),"SD." = sd(randomVec), "n" = length(randomVec))
+    resList[["ratios"]] <- c("mean" = mean(relatedVec)/mean(randomVec), "sd" = sd(relatedVec)/sd(randomVec), "median" = median(relatedVec)/median(randomVec))
+
+
+    # Compute the auroc for the related and random pairs
+    resList[["AUROC"]] <- pROC::roc(response = c(rep(1,length(relatedVec)),
+                                                 rep(0,length(randomVec))),
+                                                 predictor = c(relatedVec,randomVec), quiet = TRUE)$auc
+    
+    # Compute the Jensen Shanonn divergence between the related and random pairs
+
+    ## Estimate the probability density function of the related and random pairs
+    ### First estimate the density of the related and random pairs together
+    densityEst <- density(c(relatedVec,randomVec),na.rm = TRUE)
+
+    ### Then estimate the density of the related and random pairs separately using the same x values and bandwidths 
+    densityEstRel <- density(relatedVec,na.rm = TRUE,from = min(densityEst$x),to = max(densityEst$x),bw = densityEst$bw)
+    densityEstRand <- density(randomVec,na.rm = TRUE,from = min(densityEst$x),to = max(densityEst$x),bw = densityEst$bw)
+
+    ### Compute the Jensen Shannon divergence and store the results
+    resList[["JSD"]] <- philentropy::JSD(rbind(densityEstRel$y,densityEstRand$y))
+
+    ### Store the density estimates and histograms of the related and random pairs
+    resList[["densityEstRel"]] <- densityEstRel
+    resList[["densityEstRand"]] <- densityEstRand
+    resList[["histRel"]] <- hist(relatedVec,plot=FALSE)
+    resList[["histRand"]] <- hist(randomVec,plot=FALSE)
+
+
+    if(compareALL) {
+        allDIST <- as.vector(distFunc(netPropScores,distFuncSettings))
+        resList[["summaryAll"]] <- c(summary(allDIST),"SD." = sd(allDIST))
+        resList[["DensityAll"]] <- density(allDIST,na.rm = TRUE)
+        resList[["HistAll"]] <- hist(allDIST,plot=FALSE)
+        
+    }
+    
+    return(resList)	
+
+
+}
+
+statDistFunctionWrapper <- function(matrix,distFuncSettings) {
+    if("p" %in% names(distFuncSettings)) {
+        return(dist(matrix,method = distFuncSettings$method, p = distFuncSettings$p))
+    } else {
+        return(dist(matrix,method = distFuncSettings$method))
+    }
+
+}
+
+cosineSimFunctionWrapper <- function(matrix,distFuncSettings) {
+    if("p" %in% names(distFuncSettings)) {
+        temp <- proxy::simil(matrix,method = "cosine")
+        return( as.dist(1 - as.matrix(temp)^p)) # this assumes that similarity is between 0 and 1 (i.e. the input vectors are strictly positive)
+    } 
+
+    return(proxy::dist(matrix,method = "cosine"))
+}
+    
+
+    
+
+
+
+    
+
+
+
+
+# Function that takes as input a vector and returns TRUE or FALSE randomly with proability p and 1-p
+
+# Test if its faster to compute the pairwise distance matrix with a for loop or with the dist function when only a small proportion of the pairs are needed
+
+computeDistWithForLoop <- function(vecSize,nVec,prop) {
+    startTime <- Sys.time()
+    vecs <- matrix(rnorm(vecSize*nVec),nrow = nVec,ncol = vecSize)
+    resMat <- matrix(NA,nVec,nVec)
+    for(i in sample(1:nVec,round(nVec*prop))) {
+        for(j in sample(1:nVec,round(nVec*prop))) {
+            resMat[i,j] <- dist(vecs[c(i,j),])
+        }
+    }
+    endTime <- Sys.time()
+    print(endTime - startTime)
+    startTime <- Sys.time()
+    resMat2 <- dist(vecs)
+    endTime <- Sys.time()
+    print( endTime - startTime)
+    return(0)
 }

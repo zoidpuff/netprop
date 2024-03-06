@@ -16,3 +16,8 @@
 /phenotypeMapping.csv
 /propagationAUCtest.R:Zone.Identifier
 /results
+/Code/results
+/*.jpg
+/*.png
+
+relationshipsWithNames.csv

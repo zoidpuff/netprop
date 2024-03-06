@@ -586,10 +586,37 @@ ggplot(aurocsLongDF, aes(x = PercentDropped, y = vals, fill = PercentDropped)) +
 library(dplyr)
 library(ggplot2)
 
-binarizedECnorm <- read.csv("/home/gummi/netprop/results/aurocResults_binarized_ECnormalized.csv")
-binarized <- read.csv("/home/gummi/netprop/results/aurocResults_binarized_unnormalized.csv")
-weightedECnorm <- read.csv("/home/gummi/netprop/results/aurocResults_weighted_ECnormalized.csv")
-weighted <- read.csv("/home/gummi/netprop/results/aurocResults_weighted_unnormalized.csv")
+# Load all the csv  /home/gummi/netprop/Code/results
+
+pathToCSV <- "/home/gummi/netprop/Code/results"
+
+csvFiles <- list.files(pathToCSV, pattern = "*.csv", full.names = TRUE)
+
+# Filter for csv that contain ellenDat
+csvFiles <- csvFiles[grep("overall",csvFiles)]
+
+DFs <- lapply(csvFiles, read.csv, stringsAsFactors = FALSE)
+
+names(DFs) <- gsub(".csv","",basename(csvFiles))
+
+# Take mean_0.75 from each dataframe and rbind them into one dataframe with a column that indicates which dataframe the value came from
+
+DFs <- lapply(DFs, function(x) x %>% select(mean_0.9))
+
+DF <- do.call(rbind,DFs)
+
+DF$source <- rep(names(DFs),sapply(DFs,nrow))
+
+
+# Plot the density of the mean values
+
+a <-ggplot(DF, aes(x = mean_0.9, fill = source)) + geom_density(alpha = 0.5) + theme_bw() + ggtitle("Density of AUROC values for mean_0.9")
+
+# Plot boxplots of the mean values
+
+
+```
+
 
 # combine the dataframes into one
 
