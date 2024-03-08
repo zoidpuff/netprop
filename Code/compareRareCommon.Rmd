@@ -641,6 +641,7 @@ View(relationshipsDFuniqueEFO)
 ```
 
 
+
 ```{r }
 
 # Comapring the netprop and semantic embedding vectors with scatter plots
@@ -689,7 +690,8 @@ HERE I AM TESTING OUT THE COMPARE DISTANCE FUNCTION. I HAVE TO LOAD THE DATA AND
 
 ```{r }
 
-
+# Loads object called diseaseDF
+load("/home/gummi/netprop/data/diseases.rdata")
 
 relationshipsAll <- read.csv(paste0(netPropPath,"/relationshipsWithNames.csv"), stringsAsFactors = FALSE)
 
@@ -722,29 +724,38 @@ testRes <- compareDistanceMetric(as.matrix(resDF),
 ```
 
 
+
+
 ```{r }
 # Euclidean distance
-
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
 testRes <- compareDistanceMetric(as.matrix(resDF),
-                      statDistFunctionWrapper,
-                      list("method" = "euclidean"),
+                      computeDistance,
+                      list("method" = "cosine"),
                       as.matrix(relationshipsEFO[,c("term1","term2")]),
                       10,
-                      TRUE
-                      )
+                      TRUE,
+                      diseaseDF)
 # Look at the results of the testRes
 
-testRes[["summaryRelated"]]
-testRes[["summaryRandom"]]
-testRes[["ratios"]]
-testRes[["AUROC"]]
-testRes[["JSD"]]
+#testRes[["summaryRelated"]]
+#testRes[["summaryRandom"]]
+#testRes[["ratios"]]
+#testRes[["AUROC"]]
+#testRes[["JSD"]]
+
+testRes[["Plot_UMAP"]]
+#testRes[["Plot_isoMDS"]]
+#testRes[["Plot_cMDS"]]
 
 
-plot(testRes[["DensityAll"]])
-lines(testRes[["densityEstRand"]], col = "blue")
-lines(testRes[["densityEstRel"]] , col = "red")
+#plot(testRes[["DensityAll"]])
+#lines(testRes[["densityEstRand"]], col = "blue")
+#lines(testRes[["densityEstRel"]] , col = "red")
 
+
+testRes[["legendPlot"]]
+  
 ```
 
 
@@ -799,6 +810,97 @@ testRes[["JSD"]]
 plot(testRes[["DensityAll"]])
 lines(testRes[["densityEstRand"]], col = "blue")
 lines(testRes[["densityEstRel"]] , col = "red")
+
+
+```
+
+```{r }
+
+distanceMetricList <- list(
+  "euclidean" = list("method" = "euclidean","returnDist" = NA),
+  "manhattan" = list("method" = "manhattan","returnDist" = NA),
+  "cosine" = list("method" = "cosine"),
+  "cosineSharp2" = list("method" = "cosine","p" = 2),
+  "cosineSharp3" = list("method" = "cosine","p" = 3),
+  "cosineDist" = list("method" = "cosine","returnDist" = NA)
+  "cosineSharp2Dist" = list("method" = "cosine","p" = 2,"returnDist" = NA),
+  "cosineSharp3Dist" = list("method" = "cosine","p" = 3,"returnDist" = NA),
+  "pearson" = list("method" = "pearson"),
+  "spearman" = list("method" = "spearman")
+  "kendall" = list("method" = "kendall"),
+  "pearsonDist" = list("method" = "pearson","returnDist" = NA),	
+  "spearmanDist" = list("method" = "spearman","returnDist" = NA),
+  "kendallDist" = list("method" = "kendall","returnDist" = NA),
+)
+
+settingsPerm1 <- list("nSamples" = 200, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1)
+settingsPerm2 <- list("nSamples" = 100, "perserveDegree" = TRUE, "degreeSampleSmoothing" = 3, "minBucketSize" = 1)
+
+
+normList <- list(list(NULL,NULL,"noNorm"),
+                list(ECnormalize,list("logtransform" = FALSE),"ECnorm"),
+                list(ECnormalize,list("logtransform" = TRUE),"ECnormLog"),
+                list(permuteTestNormalize,settingsPerm1,"permuteNorm"),
+                list(permuteTestNormalize,settingsPerm2,"permuteNormDegree"))
+
+
+for(distMetric) {
+
+}
+
+
+
+```
+
+```{r }
+# Examine difference between prcomp(x) and eigen(cov(x))
+
+data <- as.matrix(iris[,1:4])
+
+# Compute the covariance matrix of the data
+
+covData <- cov(data)
+covScData <- cov(scale(data))
+corData <- cor(data)
+corScData <- cor(scale(data))
+
+# Scaled Covariance matrix is same as the correlation matrix
+
+# See if eigen(covData) is the same as prcomp(data)$sdev
+
+prcomp(data,scale. = TRUE)$x
+
+# Compute the principal components of the data using the eigen function
+
+eigen(covScData)
+
+# Project the data onto the principal components
+
+projectedData <- scale(data) %*% eigenData$vectors
+
+
+a <- umap::umap(iris[,1:4])
+adat <- as.data.frame(cbind(a$layout,iris[,5]))
+
+# Create a second dataframe that has all combinations of the species and the first two principal components
+points <- paste(adat[adat$V3 == 1,1],adat[adat$V3 == 1,2])
+bdat <- expand.grid(points,points) %>%
+                    separate(Var1, c("V1","V2"), sep = " ") %>%
+                    separate(Var2, c("V3","V4"), sep = " ") %>%
+                    mutate(V1 = as.numeric(V1), V2 = as.numeric(V2)) %>%
+                    mutate(V3 = as.numeric(V3), V4 = as.numeric(V4)) %>% 
+                    filter(V3 != V1) %>%
+                    filter(V4 != V2) 
+
+ggplot() +
+  geom_point(data=adat, aes(x = V1, y = V2,color=as.factor(V3))) +
+  geom_segment(data=bdat,aes(x=V1,y=V2,xend=V3,yend=V4),alpha=0.01) +
+  theme_classic()
+
+
+dynamicTreeCut::cutreeDynamic(hclust(dist(iris[,1:4])))
+
+
 
 
 ```

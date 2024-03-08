@@ -424,7 +424,7 @@ runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 
 
 
 
-compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, diseasePairs, randomSetSize,  compareALL = FALSE) {
+compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, diseasePairs, randomSetSize,  compareALL = FALSE, diseasesDataFrame) {
 
     # Make sure the netPropScores is a matrix
     netPropScores <- as.matrix(netPropScores)
@@ -474,8 +474,6 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
             return(c(NA,NA))
         }
     }
-
-
 
     randomPairs <- combn(rownames(netPropScores),2,simplify = TRUE,randSampl,
                                                                     p = proportionOfPossiblePairs,
@@ -527,17 +525,114 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
 
 
     if(compareALL) {
-        allDIST <- as.vector(distFunc(netPropScores,distFuncSettings))
-        resList[["summaryAll"]] <- c(summary(allDIST),"SD." = sd(allDIST))
-        resList[["DensityAll"]] <- density(allDIST,na.rm = TRUE)
-        resList[["HistAll"]] <- hist(allDIST,plot=FALSE)
+        allMetric <- distFunc(netPropScores,distFuncSettings)
+        allMetricVec <- as.vector(allMetric)
+        resList[["summaryAll"]] <- c(summary(allMetricVec),"SD." = sd(allMetricVec))
+        resList[["DensityAll"]] <- density(allMetricVec,na.rm = TRUE)
+        resList[["HistAll"]] <- hist(allMetricVec,plot=FALSE)
+        rm(allMetricVec)
+
+
+        # Compute some lower dimensional representations of the distance/similarity matrix
+        if(!("returnDist" %in% names(distFuncSettings))) {
+            # Convert the similarity matrix to a distance matrix
+            print("Converting similarity matrix to distance matrix")
+            print(summary(allMetric))
+            allMetric <- proxy::as.dist(allMetric) # assumes that the input is a similarity matrix
+            print(summary(allMetric))
+
+        }
+
+            if(any(allMetric == 0)) {
+                print("Atleast one distance is 0, setting to the smallest non zero distance")
+                allMetric[allMetric < 1e-7] <- 1e-7
+                print(summary(allMetric))
+            }
+
+            resList[["cMDS"]] <- cmdscale(allMetric,k = 2)
+            resList[["isoMDS"]] <- MASS::isoMDS(allMetric,k = 2)$points
+            resList[["UMAP"]] <- umap::umap(as.matrix(allMetric),input = "dist")$layout	
+
+            resList[["HClust"]] <- hclust(allMetric)
+            resList[["HClustDTC"]] <- dynamicTreeCut::cutreeDynamic(resList[["HClust"]])
+
+
+        # Create plots of the 
+
+        coords <- c("cMDS","isoMDS","UMAP")
+
+        for(coord in coords) {
+            coordDF <- as.data.frame(resList[[coord]]) 
+            colnames(coordDF) <- c("Dim1","Dim2")
+            rownames(coordDF) <- rownames(netPropScores)
+            pairDF <- createPairDF(coordDF,diseasePairs)
+            coordDF$Cluster <- as.factor(resList[["HClustDTC"]])
+
+            resList[[paste0("Plot_",coord)]] <- ggplot() +
+                geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster")) +
+                geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.05) +
+                theme_classic() +
+                labs(title = coord) 
+
+        }
+
+        # Get the frequent ancestors of the diseases in each cluster
+        resList[["commonAncestors"]] <- getCommonClusterAncestors(diseasesDataFrame,
+                                                                    resList[["HClustDTC"]],
+                                                                    rownames(netPropScores),
+                                                                    7)
+
+        # Create a legend plot that shows the colors of the clusters and the frequent ancestors of the diseases in each cluster
+        ## Create dataframe with cluster number and concatenated ancestors
+        legendDF <- data.frame("Clusters" = min(resList[["HClustDTC"]]):max(resList[["HClustDTC"]]),
+                                "Ancestors" = sapply(resList[["commonAncestors"]],
+                                                                function(x) paste(names(x),collapse = ", ")),
+                                "Counts" = as.vector(table(resList[["HClustDTC"]]))
+                                            )
+
+
+        legendDF$ClusterCounts <- paste0(legendDF$Clusters," (",legendDF$Counts,")")
         
+        # Add a \n to the ancestors strings if the nchar exceeds 60. Add only one \n to the string at the first comma after 60 characters
+        legendDF$Ancestors <- gsub("(.{80},)","\\1\n",legendDF$Ancestors)
+        # This adds multiple \n to the string if the string is longer than 120 characters
+        
+        resList[["legendPlot"]] <- ggplot(legendDF) +
+            geom_text(aes(x = 1,y = Clusters, label = Ancestors,color = as.factor(Clusters)),hjust = 0) +
+            geom_text(aes(x = 0.9,y = Clusters, label = ClusterCounts,color = as.factor(Clusters)),hjust = 0) +
+            theme_classic() +
+            labs(title = "Legend") +
+            theme(legend.position = "none") +
+            theme(axis.text.y = element_blank(),
+                    axis.text.x = element_blank(),
+                    axis.ticks.y = element_blank(),
+                    axis.ticks.x = element_blank(),
+                    axis.title.x=element_blank(),
+                    axis.title.y=element_blank()) +
+            xlim(0.9,2) +
+            scale_y_reverse()
+      
+
+
+
     }
     
     return(resList)	
 
-
 }
+
+# Function that takes in a matrix coordinates and a list of pairs of rows and returns a dataframe where each row contains the coordinates of the two rows in the pair
+
+createPairDF <- function(coords,pairs) {
+    resDF <- data.frame(matrix(NA,nrow = nrow(pairs),ncol = ncol(coords)*2))
+    for(i in 1:nrow(pairs)) {
+        resDF[i,] <- unlist(c(coords[pairs[i,1],],coords[pairs[i,2],]))
+    }
+    colnames(resDF) <- c("x1","y1","x2","y2")
+    return(resDF)
+}
+
+
 
 statDistFunctionWrapper <- function(matrix,distFuncSettings) {
     if("p" %in% names(distFuncSettings)) {
@@ -551,40 +646,92 @@ statDistFunctionWrapper <- function(matrix,distFuncSettings) {
 cosineSimFunctionWrapper <- function(matrix,distFuncSettings) {
     if("p" %in% names(distFuncSettings)) {
         temp <- proxy::simil(matrix,method = "cosine")
-        return( as.dist(1 - as.matrix(temp)^p)) # this assumes that similarity is between 0 and 1 (i.e. the input vectors are strictly positive)
+        return(1 - temp^p) # this assumes that similarity is between 0 and 1 (i.e. the input vectors are strictly positive)
     } 
 
     return(proxy::dist(matrix,method = "cosine"))
 }
-    
+
+correlationFunctionWrapper <- function(matrix,distFuncSettings,returnDist) {
+    if(returnDist) {
+        return(as.dist(1-abs(cor(t(matrix),method = distFuncSettings$method))))
+    } else { 
+        return(as.dist(cor(t(matrix),method = distFuncSettings$method)))
+    }
+}
+
 
     
-
-
-
+computeDistance <- function(matrix, distFuncSettings) {
+    method <- distFuncSettings$method
     
+    if (method %in% c("pearson", "spearman", "kendall")) {
+        if ("returnDist" %in% names(distFuncSettings)){
+            return(as.dist(1 - abs(cor(t(matrix), method = method))))
+        } else {
+            return(proxy::as.simil(cor(t(matrix), method = method)))
+        }
+    } else if (method == "cosine") {
+        temp <- proxy::simil(matrix, method = method)
+        # Sharpen the cosine similarity
+        if ("p" %in% names(distFuncSettings)) {
+            temp <- temp^distFuncSettings$p
+        }
+        # Check if the distance
+        if ("returnDist" %in% names(distFuncSettings)){
+            return(proxy::as.dist(temp))
+        } else {
+            return(temp)
+        }
 
-
-
-
-# Function that takes as input a vector and returns TRUE or FALSE randomly with proability p and 1-p
-
-# Test if its faster to compute the pairwise distance matrix with a for loop or with the dist function when only a small proportion of the pairs are needed
-
-computeDistWithForLoop <- function(vecSize,nVec,prop) {
-    startTime <- Sys.time()
-    vecs <- matrix(rnorm(vecSize*nVec),nrow = nVec,ncol = vecSize)
-    resMat <- matrix(NA,nVec,nVec)
-    for(i in sample(1:nVec,round(nVec*prop))) {
-        for(j in sample(1:nVec,round(nVec*prop))) {
-            resMat[i,j] <- dist(vecs[c(i,j),])
+    } else {
+        if ("p" %in% names(distFuncSettings)) {
+            return(dist(matrix, method = method, p = distFuncSettings$p))
+        } else {
+            return(dist(matrix, method = method))
         }
     }
-    endTime <- Sys.time()
-    print(endTime - startTime)
-    startTime <- Sys.time()
-    resMat2 <- dist(vecs)
-    endTime <- Sys.time()
-    print( endTime - startTime)
-    return(0)
 }
+
+# Function that takes in the disease R object that contains ancestry and descendent info for diseases, and disease clustering info.
+# It returns the top n most common ancestry terms of all the diseases in each cluster
+
+getCommonClusterAncestors <- function(diseases,clusterMembership,diseaseNames,topn) {
+
+    # Create a list that will hold the results
+    resList <- list()
+
+    idToName <- setNames(diseases$name, diseases$id)
+
+    # For each cluster
+    for(i in min(clusterMembership):max(clusterMembership)) {
+        # Get the diseases in the cluster
+        clusterDiseases <- diseaseNames[clusterMembership == i]
+
+        # Get the ancestors of the diseases in the cluster
+        clusterAncestors <- lapply(clusterDiseases,function(x) getAncestors(diseases,x))
+
+        # Get the most common ancestors of the diseases in the cluster
+        sortedAncestors <- sort(table(unlist(clusterAncestors)),decreasing = TRUE)
+    	
+        # Change from ids to names
+        names(sortedAncestors) <- idToName[names(sortedAncestors)]
+
+        resList[[as.character(i)]] <- sortedAncestors[1:min(length(sortedAncestors),topn)] 
+
+        }
+
+    return(resList)
+
+
+}
+
+getAncestors <- function(diseases,disease) {
+    return(unlist(diseases$ancestors[[which(diseases$id == disease)]]))
+}   
+    
+
+
+
+
+
