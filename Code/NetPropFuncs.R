@@ -1,8 +1,9 @@
 
 library(dplyr)
 library(igraph)
-library(doParallel)
-library(foreach)
+library(ggplot2)
+#library(doParallel)
+#library(foreach)
 
 # Function that takes in a seed list that is a list of 3 vectors, 
 #   1st vector is the seed genes, 2nd vector is the seed scores, 
@@ -402,6 +403,13 @@ runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 
             resList[[trait]] <- seeds[[1]]
             next
         }
+
+        if(all(seeds[[1]] == 0)) {
+            print(paste0("No seed genes found for ",trait))
+            next
+        }
+
+
         # Run network propagation with the seed vector
         netProp <- igraph::page_rank(network, directed = FALSE, damping = damping, personalized = seeds[[1]])$vector
 
@@ -415,7 +423,7 @@ runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 
     }
 
 
-    return(resList)
+    return(do.call(rbind,resList))
 
 }
 
@@ -532,86 +540,171 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
         resList[["HistAll"]] <- hist(allMetricVec,plot=FALSE)
         rm(allMetricVec)
 
+        #print(str(allMetric))
+
+        # Set the preferred number of clusters to the square root of the number of diseases
+        preferredClusterNumber <- sqrt(nrow(netPropScores))
+        kparam <- sqrt(nrow(netPropScores))
 
         # Compute some lower dimensional representations of the distance/similarity matrix
         if(!("returnDist" %in% names(distFuncSettings))) {
             # Convert the similarity matrix to a distance matrix
             print("Converting similarity matrix to distance matrix")
+            print("Stats before conversion:")
             print(summary(allMetric))
             allMetric <- proxy::as.dist(allMetric) # assumes that the input is a similarity matrix
+            print("Stats after conversion:")
             print(summary(allMetric))
+
 
         }
 
-            if(any(allMetric == 0)) {
-                print("Atleast one distance is 0, setting to the smallest non zero distance")
-                allMetric[allMetric < 1e-7] <- 1e-7
-                print(summary(allMetric))
+        if(any(allMetric == 0)) {
+            print("Atleast one distance is 0, setting to the smallest non zero distance")
+            allMetric[allMetric < 1e-16] <- 1e-10
+            print(summary(allMetric))
+        }
+
+        resList[["cMDS"]] <- cmdscale(allMetric,k = 2)
+        resList[["isoMDS"]] <- MASS::isoMDS(allMetric,k = 2)$points
+        resList[["UMAP"]] <- umap::umap(as.matrix(allMetric),input = "dist")$layout	
+
+        resList[["HClust"]] <- hclust(allMetric)
+        resList[["HClustKcut"]] <- cutree(resList[["HClust"]],k = preferredClusterNumber)
+
+        # Run dynamic tree cut with various minClusterSize and take the one with the number of clusters closest to preferredClusterNumber
+        #resList[["HClustDTC"]] <- dynamicTreeCut::cutreeDynamic(resList[["HClust"]],minClusterSize = 5)
+
+        DTClist <- list()
+        nclust <- c()
+        index <- 1
+        for(minClusterSize in seq(4,20,1)) {
+            DTClist[[as.character(minClusterSize)]] <- dynamicTreeCut::cutreeDynamic(resList[["HClust"]],minClusterSize = minClusterSize)
+            nclust[index] <- length(unique(DTClist[[as.character(minClusterSize)]]))
+            index <- index + 1
+        }
+        bestMinClusterSize <- as.character(seq(4,20,1)[which.min(abs(nclust - preferredClusterNumber))])
+        resList[["HClustDTC"]] <- DTClist[[bestMinClusterSize]]
+
+
+        # Run leiden with different resolutions and take the one with the number of clusters closest to preferredClusterNumber
+        leidList <- list()
+        nclust <- c()
+        index <- 1
+        snnGraph <- dbscan::sNN(allMetric,k = kparam,kt=kparam/3) %>%
+                                        dbscan::adjacencylist() %>%
+                                        igraph::graph_from_adj_list() %>%
+                                        igraph::as.undirected() %>% # Add edge weights to the graph from similarity matrix
+                                        igraph::simplify()
+
+        # Add edge weights to the graph from similarity matrix
+        #E(snnGraph)$weight <- as.matrix(proxy::as.simil(allMetric))[igraph::get.edgelist(snnGraph)]
+
+
+        for(res in seq(0.01,2.01,0.05)) {
+            leidList[[as.character(res)]] <- snnGraph %>%
+                                    igraph::cluster_leiden(resolution_parameter = res,n_iterations = 13) %>%
+                                    igraph::membership() 
+                                    
+            nclust[index] <- length(unique(leidList[[as.character(res)]]))
+            index <- index + 1
             }
-
-            resList[["cMDS"]] <- cmdscale(allMetric,k = 2)
-            resList[["isoMDS"]] <- MASS::isoMDS(allMetric,k = 2)$points
-            resList[["UMAP"]] <- umap::umap(as.matrix(allMetric),input = "dist")$layout	
-
-            resList[["HClust"]] <- hclust(allMetric)
-            resList[["HClustDTC"]] <- dynamicTreeCut::cutreeDynamic(resList[["HClust"]])
+        
+        bestResLeiden <-as.character(seq(0.01,1.01,0.05)[which.min(abs(nclust - preferredClusterNumber))])
+        resList[["Leiden"]] <- leidList[[bestResLeiden]]
 
 
         # Create plots of the 
 
+        
         coords <- c("cMDS","isoMDS","UMAP")
+        clustAlgos <- c("HClustKcut","Leiden","HClustDTC")
 
-        for(coord in coords) {
-            coordDF <- as.data.frame(resList[[coord]]) 
-            colnames(coordDF) <- c("Dim1","Dim2")
-            rownames(coordDF) <- rownames(netPropScores)
-            pairDF <- createPairDF(coordDF,diseasePairs)
-            coordDF$Cluster <- as.factor(resList[["HClustDTC"]])
+    	for(clustAlgo in clustAlgos){
 
-            resList[[paste0("Plot_",coord)]] <- ggplot() +
-                geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster")) +
-                geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.05) +
+            # Get the frequent ancestors of the diseases in each cluster
+            resList[[paste0("commonAncestors_",clustAlgo)]] <- getCommonClusterAncestors(diseasesDataFrame,
+                                                                        resList[[clustAlgo]],
+                                                                        rownames(netPropScores))
+
+            # Create a legend plot that shows the colors of the clusters and the frequent ancestors of the diseases in each cluster
+            ## Create dataframe with cluster number and concatenated ancestors
+            legendDF <- data.frame("Clusters" = min(resList[[clustAlgo]]):max(resList[[clustAlgo]]),
+                                    "Ancestors" = sapply(resList[[paste0("commonAncestors_",clustAlgo)]],
+                                                                    function(x) paste(names(x[1:min(7,length(x))]),collapse = ", ")),
+                                    "Counts" = as.vector(table(resList[[clustAlgo]])),
+                                    "Entropy" = sapply(resList[[paste0("commonAncestors_",clustAlgo)]],
+                                                        function(x) DescTools::Entropy(x)/log2(length(x)))
+                                                )
+
+
+            legendDF$ClusterCounts <- paste0(legendDF$Clusters," [",legendDF$Counts,"]  |",round(legendDF$Entropy,2),"|")
+            
+
+            legendDF <- legendDF[order(legendDF$Counts,decreasing = TRUE),]
+            legendDF$yCoord <- 1:nrow(legendDF)
+            legendDF$LineYs <- legendDF$yCoord + 0.5
+
+
+            # Add a \n to the ancestors strings if the nchar exceeds 60. Add only one \n to the string at the first comma after 60 characters
+            legendDF$Ancestors <- gsub("(.{100},)","\\1\n",legendDF$Ancestors)
+
+            sortClustLabs <- names(sort(table(resList[[clustAlgo]]),decreasing = TRUE))
+            
+            resList[[paste0("legendPlot_",clustAlgo)]] <- ggplot(legendDF[1:min(30,nrow(legendDF)),]) +
+                geom_text(aes(x = 1,y = yCoord, label = Ancestors,color = factor(Clusters,levels = sortClustLabs)),hjust = 0) +
+                geom_text(aes(x = 0.9,y = yCoord, label = ClusterCounts,color = factor(Clusters,levels = sortClustLabs)),hjust = 0) +
+                geom_hline(aes(yintercept = LineYs), color = "lightgray") +
                 theme_classic() +
-                labs(title = coord) 
+                labs(title = "Legend") +
+                theme(legend.position = "none") +
+                theme(axis.text.y = element_blank(),
+                        axis.text.x = element_blank(),
+                        axis.ticks.y = element_blank(),
+                        axis.ticks.x = element_blank(),
+                        axis.title.x=element_blank(),
+                        axis.title.y=element_blank()) +
+                xlim(0.9,2) +
+                scale_y_reverse()
+
+
+            for(coord in coords) {
+                coordDF <- as.data.frame(resList[[coord]]) 
+                colnames(coordDF) <- c("Dim1","Dim2")
+                rownames(coordDF) <- rownames(netPropScores)
+                pairDF <- createPairDF(coordDF,diseasePairs)
+                coordDF$Cluster <- factor(resList[[clustAlgo]],levels = sortClustLabs)
+
+                # For each cluster, compute the center of it and put it in dataframe so it can be plotted as text
+
+                clusterCenters <- coordDF %>% group_by(Cluster) %>% summarise(Dim1 = median(Dim1),Dim2 = median(Dim2)) %>% ungroup()
+
+
+                resList[[paste0("Plot_",clustAlgo,"_",coord)]] <- ggplot() +
+                    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster")) +
+                    geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
+                    geom_text(data = clusterCenters,aes_string(x = "Dim1",y = "Dim2",label = "Cluster"),size = 2) +
+                    theme_classic() +
+                    labs(title = paste0(coord, " with ", clustAlgo, " Clustering")) + 
+                    coord_cartesian(xlim = quantile(coordDF$Dim1,c(0.01,0.99)),ylim = quantile(coordDF$Dim2,c(0.01,0.99))) 
+
+            }
+
+
 
         }
-
-        # Get the frequent ancestors of the diseases in each cluster
-        resList[["commonAncestors"]] <- getCommonClusterAncestors(diseasesDataFrame,
-                                                                    resList[["HClustDTC"]],
-                                                                    rownames(netPropScores),
-                                                                    7)
-
-        # Create a legend plot that shows the colors of the clusters and the frequent ancestors of the diseases in each cluster
-        ## Create dataframe with cluster number and concatenated ancestors
-        legendDF <- data.frame("Clusters" = min(resList[["HClustDTC"]]):max(resList[["HClustDTC"]]),
-                                "Ancestors" = sapply(resList[["commonAncestors"]],
-                                                                function(x) paste(names(x),collapse = ", ")),
-                                "Counts" = as.vector(table(resList[["HClustDTC"]]))
-                                            )
-
-
-        legendDF$ClusterCounts <- paste0(legendDF$Clusters," (",legendDF$Counts,")")
-        
-        # Add a \n to the ancestors strings if the nchar exceeds 60. Add only one \n to the string at the first comma after 60 characters
-        legendDF$Ancestors <- gsub("(.{80},)","\\1\n",legendDF$Ancestors)
-        # This adds multiple \n to the string if the string is longer than 120 characters
-        
-        resList[["legendPlot"]] <- ggplot(legendDF) +
-            geom_text(aes(x = 1,y = Clusters, label = Ancestors,color = as.factor(Clusters)),hjust = 0) +
-            geom_text(aes(x = 0.9,y = Clusters, label = ClusterCounts,color = as.factor(Clusters)),hjust = 0) +
-            theme_classic() +
-            labs(title = "Legend") +
-            theme(legend.position = "none") +
-            theme(axis.text.y = element_blank(),
-                    axis.text.x = element_blank(),
-                    axis.ticks.y = element_blank(),
-                    axis.ticks.x = element_blank(),
-                    axis.title.x=element_blank(),
-                    axis.title.y=element_blank()) +
-            xlim(0.9,2) +
-            scale_y_reverse()
-      
+        resList[["DensityPlot"]] <- ggplot(data.frame("x" = resList[["DensityAll"]]$x, "y" = resList[["DensityAll"]]$y), aes(x = x, y = y)) +
+                    geom_line() +
+                    geom_line(data = data.frame("x" = resList[["densityEstRand"]]$x, "y" = resList[["densityEstRand"]]$y), aes(x = x, y = y), col = "blue") +
+                    geom_line(data = data.frame("x" = resList[["densityEstRel"]]$x, "y" = resList[["densityEstRel"]]$y), aes(x = x, y = y), col = "red") +
+                    theme_classic() +
+                    labs(title = "Density plot of related and random diseases",
+                        x = "Distance",
+                        y = "Density") + 
+                    # Add AUROC and JSD to the plot
+                    annotate("text", x = median(resList[["DensityAll"]]$x), y =  max(resList[["DensityAll"]]$y),
+                            label = paste("AUROC:",round(resList[["AUROC"]],2),"\n",
+                                            "JSD:",round(resList[["JSD"]],2)), size = 5, color = "black")
 
 
 
@@ -633,39 +726,11 @@ createPairDF <- function(coords,pairs) {
 }
 
 
-
-statDistFunctionWrapper <- function(matrix,distFuncSettings) {
-    if("p" %in% names(distFuncSettings)) {
-        return(dist(matrix,method = distFuncSettings$method, p = distFuncSettings$p))
-    } else {
-        return(dist(matrix,method = distFuncSettings$method))
-    }
-
-}
-
-cosineSimFunctionWrapper <- function(matrix,distFuncSettings) {
-    if("p" %in% names(distFuncSettings)) {
-        temp <- proxy::simil(matrix,method = "cosine")
-        return(1 - temp^p) # this assumes that similarity is between 0 and 1 (i.e. the input vectors are strictly positive)
-    } 
-
-    return(proxy::dist(matrix,method = "cosine"))
-}
-
-correlationFunctionWrapper <- function(matrix,distFuncSettings,returnDist) {
-    if(returnDist) {
-        return(as.dist(1-abs(cor(t(matrix),method = distFuncSettings$method))))
-    } else { 
-        return(as.dist(cor(t(matrix),method = distFuncSettings$method)))
-    }
-}
-
-
     
 computeDistance <- function(matrix, distFuncSettings) {
     method <- distFuncSettings$method
-    
-    if (method %in% c("pearson", "spearman", "kendall")) {
+    # Corrlation functions sans kendall
+    if (method %in% c("pearson", "spearman")) {
         if ("returnDist" %in% names(distFuncSettings)){
             return(as.dist(1 - abs(cor(t(matrix), method = method))))
         } else {
@@ -683,7 +748,14 @@ computeDistance <- function(matrix, distFuncSettings) {
         } else {
             return(temp)
         }
-
+    # This is a faster implementation of the kendall
+    } else if (method == "kendall") {
+        if ("returnDist" %in% names(distFuncSettings)){
+            return(as.dist(1 - abs(pcaPP::cor.fk(t(matrix)))))
+        } else {
+            return(proxy::as.simil(pcaPP::cor.fk(t(matrix))))
+        }
+    # Just the default distance function in R with p serving as the minkowski dist parameter
     } else {
         if ("p" %in% names(distFuncSettings)) {
             return(dist(matrix, method = method, p = distFuncSettings$p))
@@ -696,7 +768,7 @@ computeDistance <- function(matrix, distFuncSettings) {
 # Function that takes in the disease R object that contains ancestry and descendent info for diseases, and disease clustering info.
 # It returns the top n most common ancestry terms of all the diseases in each cluster
 
-getCommonClusterAncestors <- function(diseases,clusterMembership,diseaseNames,topn) {
+getCommonClusterAncestors <- function(diseases,clusterMembership,diseaseNames) {
 
     # Create a list that will hold the results
     resList <- list()
@@ -717,7 +789,9 @@ getCommonClusterAncestors <- function(diseases,clusterMembership,diseaseNames,to
         # Change from ids to names
         names(sortedAncestors) <- idToName[names(sortedAncestors)]
 
-        resList[[as.character(i)]] <- sortedAncestors[1:min(length(sortedAncestors),topn)] 
+        names(sortedAncestors) <- paste0(names(sortedAncestors)," (",round(sortedAncestors/length(clusterDiseases),2),")")
+
+        resList[[as.character(i)]] <- sortedAncestors 
 
         }
 
@@ -732,6 +806,18 @@ getAncestors <- function(diseases,disease) {
     
 
 
-
+preprocessNetPropDF <- function(netPropDF,varianceBottomQuantileCuttoff,center,scale) {
+    # Scale if needed
+    if(center | scale) {
+        netPropDF <- scale(netPropDF,center = center,scale = scale)
+    }
+    # Remove genes with low variance based on quantile
+    if(varianceBottomQuantileCuttoff > 0) {
+        featureVar <- apply(netPropDF,2,var)
+        varCutOff <- quantile(featureVar,varianceBottomQuantileCuttoff)
+        netPropDF <- netPropDF[,featureVar > varCutOff]
+    }
+    return(as.data.frame(netPropDF))
+}
 
 

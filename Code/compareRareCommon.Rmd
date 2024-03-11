@@ -42,21 +42,30 @@ intGraph <- delete.vertices(intGraph, which(degree(intGraph) == 0))
 assocDataBySource <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE)
 assocDataOverall <-  read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE)
 
-assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId == "orphanet")
 
 
+# Analyis for rare diseases????
+assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","clingen","eva","eva_somatic")) 
 
-res <- runNetProp(network = intGraph,
-                    assocData = assocDataRareDiseases,
-                    cutoff = c("value" = 0.5, "number" = 5),
-                    binarize = TRUE,
-                    damping = 0.85,
-                    NormFunc = NULL,
-                    settingsForNormFunc = NULL)
+assocDataRareDiseasesCollapsed <- assocDataRareDiseases[,c("score","diseaseId","targetId")] %>% 
+  group_by(targetId,diseaseId) %>% 
+  summarise(score = max(score)) 
 
 
-resDF <- do.call(rbind, res)
-```
+rareDiseaseTraitsAssocsNotFromRareDiseaseDatasources <- assocDataBySource %>% 
+          filter(diseaseId %in% unique(assocDataRareDiseases$diseaseId) & !(datasourceId %in% c("orphanet","clingen"))) %>%
+          filter(datasourceId == "ot_genetics_portal")
+
+# Make a venn diagram to show the overlap between the targetGenes of the two datasets
+
+library(ggvenn)
+
+vennData <- list("RareDiseaseGenesFromEVA_Clingen_Orphanet" = unique(assocDataRareDiseasesCollapsed$targetId),
+                 "RareDiseaseGenesFromOTgenetics" = unique(rareDiseaseTraitsAssocsNotFromRareDiseaseDatasources$targetId))
+
+ggvenn(vennData)
+
+
 
 ```
 
@@ -654,7 +663,7 @@ assocDataOverallEFO <-  read.csv(paste0(netPropPath,"/data/associationByOverallD
 # Run the netprop algorithm with the association data and the network
 res <- runNetProp(network = intGraph,
                     assocData = assocDataOverallEFO,
-                    cutoff = c("value" = 0.5, "number" = 2),
+                    cutoff = c("value" = 0.5, "number" = 5),
                     binarize = TRUE,
                     damping = 0.85,
                     NormFunc = NULL,
@@ -688,6 +697,7 @@ ggplot(resDF, aes(x = NetPropCosineMatrix, y = semanticEmbeddingCosineMatrix)) +
 
 HERE I AM TESTING OUT THE COMPARE DISTANCE FUNCTION. I HAVE TO LOAD THE DATA AND RUN IT.
 
+
 ```{r }
 
 # Loads object called diseaseDF
@@ -696,34 +706,25 @@ load("/home/gummi/netprop/data/diseases.rdata")
 relationshipsAll <- read.csv(paste0(netPropPath,"/relationshipsWithNames.csv"), stringsAsFactors = FALSE)
 
 
-assocDataOverallEFO <-  read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE) %>%
-                      filter(grepl("EFO",diseaseId))
+assocDataOverallEFO <-  read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE)
+# %>%
+ #                     filter(grepl("EFO",diseaseId))
 
 # Run the netprop algorithm with the association data and the network
 res <- runNetProp(network = intGraph,
                     assocData = assocDataOverallEFO,
-                    cutoff = c("value" = 0.5, "number" = 2),
+                    cutoff = c("value" = 0.5, "number" = 1),
                     binarize = TRUE,
                     damping = 0.85,
                     NormFunc = NULL,
-                    settingsForNormFunc = NULL)
+                    settingsForNormFunc = NULL,
+                    returnSeedVec = TRUE)
 
-
-resDF <- do.call(rbind, res)
 
 relationshipsEFO <- relationshipsAll %>% filter(term1 %in% rownames(resDF) & term2 %in% rownames(resDF))
 
-testRes <- compareDistanceMetric(as.matrix(resDF),
-                      statDistFunctionWrapper,
-                      list("method" = "manhattan"),
-                      as.matrix(relationshipsEFO[,c("term1","term2")]),
-                      10,
-                      FALSE
-                      )
 
 ```
-
-
 
 
 ```{r }
@@ -731,7 +732,7 @@ testRes <- compareDistanceMetric(as.matrix(resDF),
 source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
 testRes <- compareDistanceMetric(as.matrix(resDF),
                       computeDistance,
-                      list("method" = "cosine"),
+                      list("method" = "manhattan", "returnDist" = TRUE),	
                       as.matrix(relationshipsEFO[,c("term1","term2")]),
                       10,
                       TRUE,
@@ -744,111 +745,71 @@ testRes <- compareDistanceMetric(as.matrix(resDF),
 #testRes[["AUROC"]]
 #testRes[["JSD"]]
 
-testRes[["Plot_UMAP"]]
-#testRes[["Plot_isoMDS"]]
+#testRes[["Plot_Leiden_UMAP"]]
+#testRes[["legendPlot_Leiden"]]
+#testRes[["Plot_HClustDTC_UMAP"]]
+#testRes[["legendPlot_HClustDTC"]]
+#testRes[["legendPlot_HClustK35"]]
+#testRes[["Plot_Leiden_cMDS"]]
 #testRes[["Plot_cMDS"]]
 
 
-#plot(testRes[["DensityAll"]])
-#lines(testRes[["densityEstRand"]], col = "blue")
-#lines(testRes[["densityEstRel"]] , col = "red")
+ #testRes[["DensityPlot"]]
+
+# Plot the densities with ggplot instead
 
 
-testRes[["legendPlot"]]
+
+#dendSortClustLabs <- testRes[["HClustDTC"]][order.dendrogram(as.dendrogram(testRes[["HClust"]]))] 
+
+# Save the dendrogram to a png
+#png("dendrogram.png")
+
+#plot(dendextend::color_branches(as.dendrogram(testRes[["HClust"]]),clusters = dendSortClustLabs),leaflab = "none") 
+
+#dev.off()
+
+# Create a compilation plot using ggpubr and cowplot 
+
   
 ```
 
 
 
-```{r }
-
-# Manhattan distance
-
-testRes <- compareDistanceMetric(as.matrix(resDF),
-                      statDistFunctionWrapper,
-                      list("method" = "manhattan"),
-                      as.matrix(relationshipsEFO[,c("term1","term2")]),
-                      10,
-                      TRUE
-                      )
-# Look at the results of the testRes
-
-testRes[["summaryRelated"]]
-testRes[["summaryRandom"]]
-testRes[["ratios"]]
-testRes[["AUROC"]]
-testRes[["JSD"]]
-
-
-plot(testRes[["DensityAll"]])
-lines(testRes[["densityEstRand"]], col = "blue")
-lines(testRes[["densityEstRel"]] , col = "red")
-
-
-```
-
-
 
 ```{r }
-# Cosine distance
-
-testRes <- compareDistanceMetric(as.matrix(resDF),
-                      cosineSimFunctionWrapper,
-                      list(),
-                      as.matrix(relationshipsEFO[,c("term1","term2")]),
-                      10,
-                      TRUE
-                      )
-# Look at the results of the testRes
-
-testRes[["summaryRelated"]]
-testRes[["summaryRandom"]]
-testRes[["ratios"]]
-testRes[["AUROC"]]
-testRes[["JSD"]]
-
-plot(testRes[["DensityAll"]])
-lines(testRes[["densityEstRand"]], col = "blue")
-lines(testRes[["densityEstRel"]] , col = "red")
+# Try to remove columns of the resDF that have a low variance
 
 
-```
+#ncol(resDF[,apply(resDF,2,var) > 0.01])
 
-```{r }
+checkOn <- apply(resDF,2,var)
 
-distanceMetricList <- list(
-  "euclidean" = list("method" = "euclidean","returnDist" = NA),
-  "manhattan" = list("method" = "manhattan","returnDist" = NA),
-  "cosine" = list("method" = "cosine"),
-  "cosineSharp2" = list("method" = "cosine","p" = 2),
-  "cosineSharp3" = list("method" = "cosine","p" = 3),
-  "cosineDist" = list("method" = "cosine","returnDist" = NA)
-  "cosineSharp2Dist" = list("method" = "cosine","p" = 2,"returnDist" = NA),
-  "cosineSharp3Dist" = list("method" = "cosine","p" = 3,"returnDist" = NA),
-  "pearson" = list("method" = "pearson"),
-  "spearman" = list("method" = "spearman")
-  "kendall" = list("method" = "kendall"),
-  "pearsonDist" = list("method" = "pearson","returnDist" = NA),	
-  "spearmanDist" = list("method" = "spearman","returnDist" = NA),
-  "kendallDist" = list("method" = "kendall","returnDist" = NA),
-)
-
-settingsPerm1 <- list("nSamples" = 200, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1)
-settingsPerm2 <- list("nSamples" = 100, "perserveDegree" = TRUE, "degreeSampleSmoothing" = 3, "minBucketSize" = 1)
+# Take the fetures that are in the top 50% and compute the mean
+diffQuant <- 0.8
 
 
-normList <- list(list(NULL,NULL,"noNorm"),
-                list(ECnormalize,list("logtransform" = FALSE),"ECnorm"),
-                list(ECnormalize,list("logtransform" = TRUE),"ECnormLog"),
-                list(permuteTestNormalize,settingsPerm1,"permuteNorm"),
-                list(permuteTestNormalize,settingsPerm2,"permuteNormDegree"))
+# Compute the coefficient of variation for each column
+
+mean
+cv <- apply(resDF,2,function(x) {
+  return(sd(x)/mean(x))
+})
+
+cv[is.na(cv)] <- 0
+
+plot(density(cv))
 
 
-for(distMetric) {
+hist(colMeans(resDF))
 
-}
-
-
+ggplot(data.frame(mean = colMeans(resDF)), aes(x = mean)) +
+  geom_histogram(binwidth = 0.00001) +
+  theme_classic() +
+  labs(title = "Distribution of the mean of the columns in resDF",
+       x = "Mean",
+       y = "Count") +
+  scale_y_log10()
 
 ```
 

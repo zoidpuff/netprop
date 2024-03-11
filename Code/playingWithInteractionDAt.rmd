@@ -633,4 +633,29 @@ compareDF <- data.frame("binarizedECnorm_mean" = binarizedECnorm$mean_0.75,
 
 tidyr::pivot_longer(compareDF,cols = everything()) %>% ggplot(aes(x = name,y = value,fill = name)) + geom_boxplot() + theme_bw()
 
-`
+
+
+```{r }
+
+nCols <- 50
+
+mat <- matrix(rnorm(20000*nCols), ncol=nCols)
+
+StartT <- Sys.time()
+
+a <- cor(mat, method = "spearman")
+
+EndT <- Sys.time()
+
+EndT - StartT
+
+StartT <- Sys.time()
+
+a <- pcaPP::cor.fk(mat)
+
+EndT <- Sys.time()
+
+EndT - StartT
+
+```
+
