@@ -30,7 +30,8 @@ assocDataBySource <- read.csv(paste0(netPropPath,"/data/associationByDatasourceD
 assocDataOverall <-  read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE)
 
 # loads diseaseDF object
-load("/home/gummi/netprop/data/diseases.rdata")
+#load("/home/gummi/netprop/data/diseases.rdata")
+load(paste0(netPropPath,"/data/diseases.rdata"))
 
 relationshipsAll <- read.csv(paste0(netPropPath,"/relationshipsWithNames.csv"), stringsAsFactors = FALSE)
 
@@ -95,7 +96,7 @@ library(doParallel)
 library(foreach)
 
 # Register the parallel backend
-no_cores <- min(2, detectCores())
+no_cores <- min(8, detectCores())
 cl <- makeCluster(no_cores)
 
 registerDoParallel(cl)
@@ -107,14 +108,14 @@ for(dataset in names(assocDataList)){
             # Run the netprop algorithm with the association data and the network
             netPropDataFrame <- runNetProp(network = intGraph,
                                 assocData = assocDataList[[dataset]],
-                                cutoff = c("value" = 0.6, "number" = 12),
+                                cutoff = c("value" = 0.5, "number" = 2),
                                 binarize = TRUE,
                                 damping = 0.85,
                                 NormFunc = NORMFUNC[[1]],
                                 settingsForNormFunc = NORMFUNC[[2]])
 
             print(paste0("Length of netpropDataFrame: ", nrow(netPropDataFrame)))
-            netPropDataFrame[min(100,nrow(netPropDataFrame)),]
+            #netPropDataFrame[min(100,nrow(netPropDataFrame)),]
             
             relationships <- relationshipsAll %>% filter(term1 %in% rownames(netPropDataFrame) & term2 %in% rownames(netPropDataFrame))
             relationships <- as.matrix(relationships[,c("term1","term2")])
