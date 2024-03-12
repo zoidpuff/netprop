@@ -77,7 +77,7 @@ distanceMetricList <- list(
 normList <- list(list(NULL,NULL,"noNorm"),
                 list(ECnormalize,list("logtransform" = FALSE),"ECnorm"),
                 list(ECnormalize,list("logtransform" = TRUE),"ECnormLog"),
-                list(permuteTestNormalize,list("nSamples" = 300, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1),"permuteNorm")
+                list(permuteTestNormalize,list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1),"permuteNorm")
 )
 
 
@@ -105,6 +105,8 @@ registerDoParallel(cl)
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
             # Run the netprop algorithm with the association data and the network
+            print(paste0("Started dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]]))
+
             netPropDataFrame <- runNetProp(network = intGraph,
                                 assocData = assocDataList[[dataset]],
                                 cutoff = c("value" = 0.5, "number" = 2),
@@ -133,7 +135,7 @@ for(dataset in names(assocDataList)){
                                     computeDistance,
                                     distanceMetricList[[distanceMetric]],	
                                     relationships,
-                                    6,
+                                    8,
                                     TRUE,
                                     diseaseDF)
                                     save(res, file = paste0(netPropPath,
@@ -149,6 +151,7 @@ for(dataset in names(assocDataList)){
         }
     }
 }
+
 
 
 # Stop the parallel backend

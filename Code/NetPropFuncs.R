@@ -556,13 +556,13 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
             print("Stats after conversion:")
             print(summary(allMetric))
 
-
         }
 
-        if(any(allMetric == 0)) {
+        if(any(allMetric <  1e-10)) {
             print("Atleast one distance is 0, setting to the smallest non zero distance")
-            allMetric[allMetric < 1e-16] <- 1e-10
+            allMetric[allMetric < 1e-10] <- 1e-10 # I dont know what value will make isoMDS not fail
             print(summary(allMetric))
+
         }
 
         resList[["cMDS"]] <- cmdscale(allMetric,k = 2)
@@ -596,6 +596,9 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
                                         igraph::graph_from_adj_list() %>%
                                         igraph::as.undirected() %>% # Add edge weights to the graph from similarity matrix
                                         igraph::simplify()
+        
+
+        
 
         # Add edge weights to the graph from similarity matrix
         #E(snnGraph)$weight <- as.matrix(proxy::as.simil(allMetric))[igraph::get.edgelist(snnGraph)]
@@ -610,7 +613,7 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
             index <- index + 1
             }
         
-        bestResLeiden <-as.character(seq(0.01,1.01,0.05)[which.min(abs(nclust - preferredClusterNumber))])
+        bestResLeiden <- as.character(seq(0.01,1.01,0.05)[which.min(abs(nclust - preferredClusterNumber))])
         resList[["Leiden"]] <- leidList[[bestResLeiden]]
 
 
@@ -782,6 +785,12 @@ getCommonClusterAncestors <- function(diseases,clusterMembership,diseaseNames) {
 
         # Get the ancestors of the diseases in the cluster
         clusterAncestors <- lapply(clusterDiseases,function(x) getAncestors(diseases,x))
+
+        # If no disease in cluster has ancestors
+        if(all(sapply(clusterAncestors,length) == 0)) {
+            resList[[as.character(i)]] <- table(idToName[clusterDiseases])
+            next
+        }
 
         # Get the most common ancestors of the diseases in the cluster
         sortedAncestors <- sort(table(unlist(clusterAncestors)),decreasing = TRUE)
