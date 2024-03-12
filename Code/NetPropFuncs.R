@@ -830,3 +830,39 @@ preprocessNetPropDF <- function(netPropDF,varianceBottomQuantileCuttoff,center,s
 }
 
 
+
+
+
+permuteTestParalell <- function(network, seedVector, netPropTRUE, settings,damping = 0.85) {
+    nSamples <- settings[["nSamples"]]
+    ncore <- settings[["ncore"]]
+
+    seedInds <- which(seedVector != 0)
+    seedScores <- seedVector[seedInds]
+
+    numberOfNodes <- length(seedVector)
+    numberOfSeeds <- length(seedInds)
+
+    # For each permutation
+    resMat <- foreach(i = 1:nSamples, .combine = rbind, .options.nws= list(chunkSize=nSamples/ncore)) %dopar% {
+
+        permutedSeedVector <- rep(0, numberOfNodes)
+ 
+        sampledNodesInds <- sample(numberOfNodes, numberOfSeeds)
+        permutedSeedVector[sampledNodesInds] <- seedScores
+
+        # Run network propagation with the permuted seed vector
+        netPropFALSE <- igraph::page_rank(network, directed = FALSE, damping = damping, personalized = permutedSeedVector)
+
+        # Add to the count vector if the permuted seed vector has a higher score then the true seed vector and the node was not a seed gene
+        countVec <- as.numeric(netPropFALSE$vector >= netPropTRUE)
+        countVec[sampledNodesInds] <- 0
+
+        countVec
+
+    }
+
+    permutationScores <- as.vector(colSums(resMat)/nSamples)
+
+    return(permutationScores)
+}

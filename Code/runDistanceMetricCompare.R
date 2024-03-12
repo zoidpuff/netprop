@@ -4,6 +4,15 @@ library(igraph)
 library(dplyr)
 source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
 
+library(doParallel)
+library(foreach)
+
+# Register the parallel backend
+no_cores <- min(32, detectCores())
+cl <- makeCluster(no_cores)
+
+registerDoParallel(cl)
+
 
 ########### LOAD GRAPH DATA ###########
 intData <- read.csv(paste0(netPropPath,"/data/interactionAll.csv"), stringsAsFactors = FALSE)
@@ -77,7 +86,8 @@ distanceMetricList <- list(
 normList <- list(list(NULL,NULL,"noNorm"),
                 list(ECnormalize,list("logtransform" = FALSE),"ECnorm"),
                 list(ECnormalize,list("logtransform" = TRUE),"ECnormLog"),
-                list(permuteTestNormalize,list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1),"permuteNorm")
+               # list(permuteTestNormalize,list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1),"permuteNorm"),
+                list(permuteTestParalell,list("nSamples" = 200,"ncore" = no_cores),"permuteNormDegree")
 )
 
 
@@ -93,14 +103,7 @@ preprocessList <- list(c("0","FALSE","FALSE"),
 
 # Run the experiments in foreach loop
 
-library(doParallel)
-library(foreach)
 
-# Register the parallel backend
-no_cores <- min(23, detectCores())
-cl <- makeCluster(no_cores)
-
-registerDoParallel(cl)
 
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
