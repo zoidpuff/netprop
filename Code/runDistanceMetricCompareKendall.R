@@ -87,14 +87,14 @@ library(doParallel)
 library(foreach)
 
 # Register the parallel backend
-no_cores <- min(8, detectCores())
+no_cores <- min(10, detectCores())
 cl <- makeCluster(no_cores)
 
 registerDoParallel(cl)
 
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
-            print(paste0("Started dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_")))
+           # print(paste0("Started dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_")))
             # Run the netprop algorithm with the association data and the network
             netPropDataFrame <- runNetProp(network = intGraph,
                                 assocData = assocDataList[[dataset]],

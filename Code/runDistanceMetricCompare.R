@@ -97,14 +97,13 @@ library(doParallel)
 library(foreach)
 
 # Register the parallel backend
-no_cores <- min(8, detectCores())
+no_cores <- min(23, detectCores())
 cl <- makeCluster(no_cores)
 
 registerDoParallel(cl)
 
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
-            print(paste0("Started dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_")))
             # Run the netprop algorithm with the association data and the network
             netPropDataFrame <- runNetProp(network = intGraph,
                                 assocData = assocDataList[[dataset]],
@@ -119,9 +118,11 @@ for(dataset in names(assocDataList)){
             
             relationships <- relationshipsAll %>% filter(term1 %in% rownames(netPropDataFrame) & term2 %in% rownames(netPropDataFrame))
             relationships <- as.matrix(relationships[,c("term1","term2")])
+
             temp <- foreach(PREPROCESS = preprocessList,.combine = list) %:%
                         foreach(distanceMetric = names(distanceMetricList), .combine = list, .packages = c('dplyr',"ggplot2")) %dopar% {
                             # Preprocess the netprop data
+                            #print(paste0("Started dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_")))
                             netPropDataFramePP <- preprocessNetPropDF(netPropDataFrame, as.numeric(PREPROCESS[1]), 
                                                                                         as.logical(PREPROCESS[2]), 
                                                                                         as.logical(PREPROCESS[3]))
