@@ -142,6 +142,7 @@ for(dataset in names(assocDataList)){
                                         NORMFUNC[[3]],"_",
                                         paste0(PREPROCESS,collapse = "_"),
                                         "_",distanceMetric,".rdata"))
+                            cat(file="internalOut.txt",append = TRUE,paste0("Finished dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
 
             
         }
