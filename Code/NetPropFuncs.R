@@ -787,7 +787,7 @@ getCommonClusterAncestors <- function(diseases,clusterMembership,diseaseNames) {
         sortedAncestors <- sort(table(unlist(clusterAncestors)),decreasing = TRUE)
     	
         # Change from ids to names
-        names(sortedAncestors) <- idToName[names(sortedAncestors)]
+        names(sortedAncestors) <- [names(sortedAncestors)]
 
         names(sortedAncestors) <- paste0(names(sortedAncestors)," (",round(sortedAncestors/length(clusterDiseases),2),")")
 

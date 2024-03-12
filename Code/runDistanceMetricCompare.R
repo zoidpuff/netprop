@@ -120,7 +120,7 @@ for(dataset in names(assocDataList)){
             relationships <- as.matrix(relationships[,c("term1","term2")])
 
             temp <- foreach(PREPROCESS = preprocessList,.combine = list) %:%
-                        foreach(distanceMetric = names(distanceMetricList), .combine = list, .packages = c('dplyr',"ggplot2")) %dopar% {
+                        foreach(distanceMetric = names(distanceMetricList), .combine = list, .packages = c('dplyr',"ggplot2"),.errorhandling = "remove") %dopar% {
                             # Preprocess the netprop data
                             #print(paste0("Started dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_")))
                             netPropDataFramePP <- preprocessNetPropDF(netPropDataFrame, as.numeric(PREPROCESS[1]), 
@@ -128,7 +128,7 @@ for(dataset in names(assocDataList)){
                                                                                         as.logical(PREPROCESS[3]))
 
                         #for(distanceMetric in names(distanceMetricList)){
-                            cat(file="internalOut.txt",append = TRUE,paste0("Started dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
+                            cat(file="internalStarted.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
                             res <- compareDistanceMetric(as.matrix(netPropDataFramePP),
                                     computeDistance,
                                     distanceMetricList[[distanceMetric]],	
@@ -142,7 +142,8 @@ for(dataset in names(assocDataList)){
                                         NORMFUNC[[3]],"_",
                                         paste0(PREPROCESS,collapse = "_"),
                                         "_",distanceMetric,".rdata"))
-                            cat(file="internalOut.txt",append = TRUE,paste0("Finished dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
+                            
+                            cat(file="internalFinished.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
 
             
         }
