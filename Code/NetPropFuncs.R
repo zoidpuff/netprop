@@ -508,9 +508,9 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
 
 
     # Compute the auroc for the related and random pairs
-    resList[["AUROC"]] <- pROC::roc(response = c(rep(1,length(relatedVec)),
+    resList[["AUROC"]] <- as.numeric(pROC::roc(response = c(rep(1,length(relatedVec)),
                                                  rep(0,length(randomVec))),
-                                                 predictor = c(relatedVec,randomVec), quiet = TRUE)$auc
+                                                 predictor = c(relatedVec,randomVec), quiet = TRUE)$auc)
     
     # Compute the Jensen Shanonn divergence between the related and random pairs
 
@@ -653,22 +653,24 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
             legendDF$Ancestors <- gsub("(.{100},)","\\1\n",legendDF$Ancestors)
 
             sortClustLabs <- names(sort(table(resList[[clustAlgo]]),decreasing = TRUE))
+
+            resList[[paste0("legendDF_",clustAlgo)]] <- legendDF
             
-            resList[[paste0("legendPlot_",clustAlgo)]] <- ggplot(legendDF[1:min(30,nrow(legendDF)),]) +
-                geom_text(aes(x = 1,y = yCoord, label = Ancestors,color = factor(Clusters,levels = sortClustLabs)),hjust = 0) +
-                geom_text(aes(x = 0.9,y = yCoord, label = ClusterCounts,color = factor(Clusters,levels = sortClustLabs)),hjust = 0) +
-                geom_hline(aes(yintercept = LineYs), color = "lightgray") +
-                theme_classic() +
-                labs(title = "Legend") +
-                theme(legend.position = "none") +
-                theme(axis.text.y = element_blank(),
-                        axis.text.x = element_blank(),
-                        axis.ticks.y = element_blank(),
-                        axis.ticks.x = element_blank(),
-                        axis.title.x=element_blank(),
-                        axis.title.y=element_blank()) +
-                xlim(0.9,2) +
-                scale_y_reverse()
+           # resList[[paste0("legendPlot_",clustAlgo)]] <- ggplot(legendDF[1:min(30,nrow(legendDF)),]) +
+            #    geom_text(aes(x = 1,y = yCoord, label = Ancestors,color = factor(Clusters,levels = sortClustLabs)),hjust = 0) +
+             #   geom_text(aes(x = 0.9,y = yCoord, label = ClusterCounts,color = factor(Clusters,levels = sortClustLabs)),hjust = 0) +
+             #   geom_hline(aes(yintercept = LineYs), color = "lightgray") +
+             #   theme_classic() +
+             #   labs(title = "Legend") +
+             #   theme(legend.position = "none") +
+             #   theme(axis.text.y = element_blank(),
+             #           axis.text.x = element_blank(),
+             #           axis.ticks.y = element_blank(),
+             #           axis.ticks.x = element_blank(),
+             #           axis.title.x=element_blank(),
+             #           axis.title.y=element_blank()) +
+             #   xlim(0.9,2) +
+             #   scale_y_reverse()
 
 
             for(coord in coords) {
@@ -678,36 +680,39 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
                 pairDF <- createPairDF(coordDF,diseasePairs)
                 coordDF$Cluster <- factor(resList[[clustAlgo]],levels = sortClustLabs)
 
+                resList[[paste0("coorDF_",clustAlgo,"_",coord)]] <- coordDF
+                resList[[paste0("pairDF_",clustAlgo,"_",coord)]] <- pairDF
+
                 # For each cluster, compute the center of it and put it in dataframe so it can be plotted as text
 
-                clusterCenters <- coordDF %>% group_by(Cluster) %>% summarise(Dim1 = median(Dim1),Dim2 = median(Dim2)) %>% ungroup()
+                #clusterCenters <- coordDF %>% group_by(Cluster) %>% summarise(Dim1 = median(Dim1),Dim2 = median(Dim2)) %>% ungroup()
 
 
-                resList[[paste0("Plot_",clustAlgo,"_",coord)]] <- ggplot() +
-                    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster")) +
-                    geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
-                    geom_text(data = clusterCenters,aes_string(x = "Dim1",y = "Dim2",label = "Cluster"),size = 2) +
-                    theme_classic() +
-                    labs(title = paste0(coord, " with ", clustAlgo, " Clustering")) + 
-                    coord_cartesian(xlim = quantile(coordDF$Dim1,c(0.01,0.99)),ylim = quantile(coordDF$Dim2,c(0.01,0.99))) 
+               # resList[[paste0("Plot_",clustAlgo,"_",coord)]] <- ggplot() +
+                #    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster")) +
+                 #   geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
+                 #   geom_text(data = clusterCenters,aes_string(x = "Dim1",y = "Dim2",label = "Cluster"),size = 2) +
+                 #   theme_classic() +
+                 #   labs(title = paste0(coord, " with ", clustAlgo, " Clustering")) + 
+                 #   coord_cartesian(xlim = quantile(coordDF$Dim1,c(0.01,0.99)),ylim = quantile(coordDF$Dim2,c(0.01,0.99))) 
 
             }
 
 
 
         }
-        resList[["DensityPlot"]] <- ggplot(data.frame("x" = resList[["DensityAll"]]$x, "y" = resList[["DensityAll"]]$y), aes(x = x, y = y)) +
-                    geom_line() +
-                    geom_line(data = data.frame("x" = resList[["densityEstRand"]]$x, "y" = resList[["densityEstRand"]]$y), aes(x = x, y = y), col = "blue") +
-                    geom_line(data = data.frame("x" = resList[["densityEstRel"]]$x, "y" = resList[["densityEstRel"]]$y), aes(x = x, y = y), col = "red") +
-                    theme_classic() +
-                    labs(title = "Density plot of related and random diseases",
-                        x = "Distance",
-                        y = "Density") + 
-                    # Add AUROC and JSD to the plot
-                    annotate("text", x = median(resList[["DensityAll"]]$x), y =  max(resList[["DensityAll"]]$y),
-                            label = paste("AUROC:",round(resList[["AUROC"]],2),"\n",
-                                            "JSD:",round(resList[["JSD"]],2)), size = 5, color = "black")
+      #  resList[["DensityPlot"]] <- ggplot(data.frame("x" = resList[["DensityAll"]]$x, "y" = resList[["DensityAll"]]$y), aes(x = x, y = y)) +
+       #             geom_line() +
+        #            geom_line(data = data.frame("x" = resList[["densityEstRand"]]$x, "y" = resList[["densityEstRand"]]$y), aes(x = x, y = y), col = "blue") +
+         #           geom_line(data = data.frame("x" = resList[["densityEstRel"]]$x, "y" = resList[["densityEstRel"]]$y), aes(x = x, y = y), col = "red") +
+          #          theme_classic() +
+           #         labs(title = "Density plot of related and random diseases",
+            #            x = "Distance",
+             #           y = "Density") + 
+              #      # Add AUROC and JSD to the plot
+               #     annotate("text", x = median(resList[["DensityAll"]]$x), y =  max(resList[["DensityAll"]]$y),
+                #            label = paste("AUROC:",round(resList[["AUROC"]],2),"\n",
+                 #                           "JSD:",round(resList[["JSD"]],2)), size = 5, color = "black")
 
 
 

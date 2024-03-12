@@ -22,3 +22,7 @@
 
 relationshipsWithNames.csv
 Rplots.pdf
+compareDist/netpropDistanceMetricCompare_AllTraitsOverallScores_noNorm_0_FALSE_FALSE_pearsonDist.rdata
+compareDist/netpropDistanceMetricCompare_AllTraitsOverallScores_noNorm_0.25_FALSE_FALSE_pearsonDist.rdata
+resSmall.rdata
+resBig.rdata
