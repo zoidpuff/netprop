@@ -59,8 +59,8 @@ assocDataList <- list("AllTraitsOverallScores" = assocDataOverall,
 # Create a list of distance metrics
 
 distanceMetricList <- list(
-  #"kendallDist" = list("method" = "kendall","returnDist" = NA),
- # "kendall" = list("method" = "kendall"),
+  "kendallDist" = list("method" = "kendall","returnDist" = NA),
+  "kendall" = list("method" = "kendall"),
   "euclidean" = list("method" = "euclidean","returnDist" = NA),
   "manhattan" = list("method" = "manhattan","returnDist" = NA),
   "cosine" = list("method" = "cosine"),
