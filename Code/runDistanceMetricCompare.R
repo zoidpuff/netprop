@@ -128,6 +128,7 @@ for(dataset in names(assocDataList)){
                                                                                         as.logical(PREPROCESS[3]))
 
                         #for(distanceMetric in names(distanceMetricList)){
+                            cat(file="internalOut.txt",append = TRUE,paste0("Started dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
                             res <- compareDistanceMetric(as.matrix(netPropDataFramePP),
                                     computeDistance,
                                     distanceMetricList[[distanceMetric]],	
