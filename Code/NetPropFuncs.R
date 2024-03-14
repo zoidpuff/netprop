@@ -170,7 +170,7 @@ ECnormalize <- function(network,seedVector,rawNetPropScores,settings) {
         if(settings$logtransform) {
 
             # Choose an epsilon value
-            epsilon <- 1e-6
+            epsilon <- 1e-9
             
             # Add epsilon to avoid log(0) and apply logarithmic transformation for numerical stability
             logTransformedScores <- log(rawNetPropScores + epsilon)
@@ -427,12 +427,16 @@ runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 
 
 }
 
+
+
+
+
 # Function that takes as input a df of network propagation scores, distance function, and a list of related disease name pairs
 # It computes the distance between the network propagation vectors for each disease pair and for all possible pairs of diseases df
 
 
 
-compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, diseasePairs, randomSetSize,  compareALL = FALSE, diseasesDataFrame) {
+compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, diseasePairs, randomSetSize,  compareALL = FALSE, diseasesDataFrame, returnDist = FALSE) {
 
     # Make sure the netPropScores is a matrix
     netPropScores <- as.matrix(netPropScores)
@@ -543,8 +547,8 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
         #print(str(allMetric))
 
         # Set the preferred number of clusters to the square root of the number of diseases
-        preferredClusterNumber <- sqrt(nrow(netPropScores))
-        kparam <- sqrt(nrow(netPropScores))
+        preferredClusterNumber <- round(sqrt(nrow(netPropScores))*1.5) 
+        kparam <- round(sqrt(nrow(netPropScores)))
 
         # Compute some lower dimensional representations of the distance/similarity matrix
         if(!("returnDist" %in% names(distFuncSettings))) {
@@ -598,8 +602,6 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
                                         igraph::simplify()
         
 
-        
-
         # Add edge weights to the graph from similarity matrix
         #E(snnGraph)$weight <- as.matrix(proxy::as.simil(allMetric))[igraph::get.edgelist(snnGraph)]
 
@@ -641,9 +643,6 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
                                                 )
 
 
-            legendDF$ClusterCounts <- paste0(legendDF$Clusters," [",legendDF$Counts,"]  |",round(legendDF$Entropy,2),"|")
-            
-
             legendDF <- legendDF[order(legendDF$Counts,decreasing = TRUE),]
             legendDF$yCoord <- 1:nrow(legendDF)
             legendDF$LineYs <- legendDF$yCoord + 0.5
@@ -655,23 +654,7 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
             sortClustLabs <- names(sort(table(resList[[clustAlgo]]),decreasing = TRUE))
 
             resList[[paste0("legendDF_",clustAlgo)]] <- legendDF
-            
-           # resList[[paste0("legendPlot_",clustAlgo)]] <- ggplot(legendDF[1:min(30,nrow(legendDF)),]) +
-            #    geom_text(aes(x = 1,y = yCoord, label = Ancestors,color = factor(Clusters,levels = sortClustLabs)),hjust = 0) +
-             #   geom_text(aes(x = 0.9,y = yCoord, label = ClusterCounts,color = factor(Clusters,levels = sortClustLabs)),hjust = 0) +
-             #   geom_hline(aes(yintercept = LineYs), color = "lightgray") +
-             #   theme_classic() +
-             #   labs(title = "Legend") +
-             #   theme(legend.position = "none") +
-             #   theme(axis.text.y = element_blank(),
-             #           axis.text.x = element_blank(),
-             #           axis.ticks.y = element_blank(),
-             #           axis.ticks.x = element_blank(),
-             #           axis.title.x=element_blank(),
-             #           axis.title.y=element_blank()) +
-             #   xlim(0.9,2) +
-             #   scale_y_reverse()
-
+        
 
             for(coord in coords) {
                 coordDF <- as.data.frame(resList[[coord]]) 
@@ -683,41 +666,14 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
                 resList[[paste0("coorDF_",clustAlgo,"_",coord)]] <- coordDF
                 resList[[paste0("pairDF_",clustAlgo,"_",coord)]] <- pairDF
 
-                # For each cluster, compute the center of it and put it in dataframe so it can be plotted as text
-
-                #clusterCenters <- coordDF %>% group_by(Cluster) %>% summarise(Dim1 = median(Dim1),Dim2 = median(Dim2)) %>% ungroup()
-
-
-               # resList[[paste0("Plot_",clustAlgo,"_",coord)]] <- ggplot() +
-                #    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster")) +
-                 #   geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
-                 #   geom_text(data = clusterCenters,aes_string(x = "Dim1",y = "Dim2",label = "Cluster"),size = 2) +
-                 #   theme_classic() +
-                 #   labs(title = paste0(coord, " with ", clustAlgo, " Clustering")) + 
-                 #   coord_cartesian(xlim = quantile(coordDF$Dim1,c(0.01,0.99)),ylim = quantile(coordDF$Dim2,c(0.01,0.99))) 
-
             }
-
-
-
         }
-      #  resList[["DensityPlot"]] <- ggplot(data.frame("x" = resList[["DensityAll"]]$x, "y" = resList[["DensityAll"]]$y), aes(x = x, y = y)) +
-       #             geom_line() +
-        #            geom_line(data = data.frame("x" = resList[["densityEstRand"]]$x, "y" = resList[["densityEstRand"]]$y), aes(x = x, y = y), col = "blue") +
-         #           geom_line(data = data.frame("x" = resList[["densityEstRel"]]$x, "y" = resList[["densityEstRel"]]$y), aes(x = x, y = y), col = "red") +
-          #          theme_classic() +
-           #         labs(title = "Density plot of related and random diseases",
-            #            x = "Distance",
-             #           y = "Density") + 
-              #      # Add AUROC and JSD to the plot
-               #     annotate("text", x = median(resList[["DensityAll"]]$x), y =  max(resList[["DensityAll"]]$y),
-                #            label = paste("AUROC:",round(resList[["AUROC"]],2),"\n",
-                 #                           "JSD:",round(resList[["JSD"]],2)), size = 5, color = "black")
-
-
-
     }
     
+    if(returnDist) {
+        resList[["Rawdist"]] <- allMetric
+    }
+
     return(resList)	
 
 }
@@ -733,6 +689,9 @@ createPairDF <- function(coords,pairs) {
     return(resDF)
 }
 
+diffOne <- function(x) {
+    return(abs(1-x))
+}
 
     
 computeDistance <- function(matrix, distFuncSettings) {
@@ -740,26 +699,26 @@ computeDistance <- function(matrix, distFuncSettings) {
     # Corrlation functions sans kendall
     if (method %in% c("pearson", "spearman")) {
         if ("returnDist" %in% names(distFuncSettings)){
-            return(as.dist(1 - abs(cor(t(matrix), method = method))))
+            return(as.dist(abs(1 - cor(t(matrix), method = method))))
         } else {
             return(proxy::as.simil(cor(t(matrix), method = method)))
         }
     } else if (method == "cosine") {
-        temp <- proxy::simil(matrix, method = method)
+        temp <- proxy::simil(matrix, method = method)idToName
         # Sharpen the cosine similarity
         if ("p" %in% names(distFuncSettings)) {
             temp <- temp^distFuncSettings$p
         }
         # Check if the distance
         if ("returnDist" %in% names(distFuncSettings)){
-            return(proxy::as.dist(temp))
+            return(proxy::as.dist(temp,FUN = diffOne))
         } else {
             return(temp)
         }
     # This is a faster implementation of the kendall
     } else if (method == "kendall") {
         if ("returnDist" %in% names(distFuncSettings)){
-            return(as.dist(1 - abs(pcaPP::cor.fk(t(matrix)))))
+            return(as.dist(abs(1 - pcaPP::cor.fk(t(matrix)))))
         } else {
             return(proxy::as.simil(pcaPP::cor.fk(t(matrix))))
         }
@@ -772,6 +731,81 @@ computeDistance <- function(matrix, distFuncSettings) {
         }
     }
 }
+
+safeRound <- function(x, digits = 0) {
+    if (is.null(x)) {
+        return(NA)
+    } else {
+        return(round(x, digits))
+    }
+}
+
+
+generatePlotsFromDistCompareResults <- function(resList,diseaseMapping= NULL) {
+
+
+    plotList <- list()
+
+
+    plotList[["DensityPlot"]] <- ggplot(data.frame("x" = resList[["densityEstRand"]]$x, "y" = resList[["densityEstRand"]]$y), aes(x = x, y = y)) +
+            geom_line() +
+            #geom_line(data = data.frame("x" = resList[["densityEstRand"]]$x, "y" = resList[["densityEstRand"]]$y), aes(x = x, y = y), col = "blue") +
+            geom_line(data = data.frame("x" = resList[["densityEstRel"]]$x, "y" = resList[["densityEstRel"]]$y), aes(x = x, y = y), col = "red") +
+            theme_classic() +
+            labs(title = "Density plot of related and random diseases",
+                x = "Distance",
+                y = "Density") + 
+            # Add AUROC and JSD to the plot
+            annotate("text", x = median(resList[["densityEstRand"]]$x), y =  mean(range(resList[["densityEstRand"]]$y)),
+                    label = paste("AUROC:",safeRound(resList[["AUROC"]],2),"\n",
+                                    "JSD:",safeRound(resList[["JSD"]],2)), size = 5, color = "black") 
+                                 #   xlim(min(resList[["densityEstRand"]]$x),max(resList[["densityEstRand"]]$x))
+    
+    coords <- c("cMDS","isoMDS","UMAP")
+    clustAlgos <- c("HClustKcut","Leiden","HClustDTC")
+
+
+    if(is.null(diseaseMapping)) {
+        diseaseMapping <- data.frame("id" = rownames(resList[[paste0("coorDF_",clustAlgos[1],"_",coords[1])]]), "name" = rownames(resList[[paste0("coorDF_",clustAlgos[1],"_",coords[1])]]))
+        idToName <- setNames(diseaseMapping$name, diseaseMapping$id)
+    } else {
+        idToName <- setNames(diseaseMapping$name, diseaseMapping$id)
+    }
+
+
+    for(clustAlgo in clustAlgos) {
+
+        # Generat a kables table of the legendDF
+        legendDF <- resList[[paste0("legendDF_",clustAlgo)]]
+
+        plotList[[paste0("legendTable_",clustAlgo)]] <- kable(legendDF[,c("Clusters","Counts","Entropy","Ancestors")],caption = paste0("Legend for ",clustAlgo," Clustering"))
+
+        for(coord in coords) {
+            coordDF <- resList[[paste0("coorDF_",clustAlgo,"_",coord)]]
+            pairDF <- resList[[paste0("pairDF_",clustAlgo,"_",coord)]]
+            clusterCenters <- coordDF %>% group_by(Cluster) %>% summarise(Dim1 = median(Dim1),Dim2 = median(Dim2)) %>% ungroup()
+
+            coordDF$Cluster <- as.factor(as.character(coordDF$Cluster))
+
+            coordDF$labels <- paste0(rownames(coordDF), " (", idToName[rownames(coordDF)], ")")
+
+            plotList[[paste0("Plot_",clustAlgo,"_",coord)]]  <- ggplot() +
+                    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster",text="labels")) +
+                    geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
+                    geom_text(data = clusterCenters,aes_string(x = "Dim1",y = "Dim2",label = "Cluster"),size = 3) +
+                    theme_classic() +
+                    labs(title = paste0(coord, " with ", clustAlgo, " Clustering"))  
+                    #coord_cartesian(xlim = quantile(coordDF$Dim1,c(0.01,0.99)),ylim = quantile(coordDF$Dim2,c(0.01,0.99))) 
+
+             }
+    }
+
+
+
+
+    return(plotList)
+}
+
 
 # Function that takes in the disease R object that contains ancestry and descendent info for diseases, and disease clustering info.
 # It returns the top n most common ancestry terms of all the diseases in each cluster
@@ -870,4 +904,53 @@ permuteTestParalell <- function(network, seedVector, netPropTRUE, settings,dampi
     permutationScores <- as.vector(colSums(resMat)/nSamples)
 
     return(permutationScores)
+}
+
+
+
+plotDensityGrid <- function(distFuncs, varCuttOffs, normMethod, dataset, masterRes) {
+
+    listOfPlots <- list()
+    for(cuttoff in varCuttOffs) {
+        if(cuttoff == "0Center") {
+            cuttoff <- "0"
+            center <- "TRUE"
+        } else {
+            center <- "FALSE"
+        }
+        for(dist in distFuncs) {
+            #print(paste(cuttoff,center,dist))
+            plots <- generatePlotsFromDistCompareResults( masterRes[[dataset]][[normMethod]][[cuttoff]][[center]][["FALSE"]][[dist]] )
+            if(center == "TRUE") {
+                cuttoffLab <- paste0(cuttoff," Centered")
+            } else {
+                cuttoffLab <- cuttoff
+            }
+            listOfPlots[[paste(cuttoffLab,dist)]] <- plots[[1]] + 
+            theme(axis.title.x=element_blank(),
+                  axis.text.y=element_blank(),
+                  axis.ticks.y=element_blank()) 
+            if(cuttoffLab == varCuttOffs[1]) {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ylab(dist)
+            } else {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ylab("")
+            }
+            if(dist == distFuncs[1]) {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ggtitle(cuttoffLab)
+            } else {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ggtitle("") }
+        }
+    }
+
+        plotT <- cowplot::plot_grid(plotlist = listOfPlots, ncol = length(varCuttOffs),byrow = FALSE)
+        #title <- cowplot::ggdraw() + cowplot::draw_label(paste0(dataset, " ", normMethod), fontface='bold')
+       
+
+        #return(cowplot::plot_grid(title, plotT, ncol=1, rel_heights=c(0.05, 1))) # rel_heights values control title margins)
+        return(plotT)
+
+        
+
+
+
 }

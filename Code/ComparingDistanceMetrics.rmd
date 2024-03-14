@@ -1,0 +1,632 @@
+---
+title: "Comparing distance metrics"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+netPropPath <- "/home/gummi/netprop"
+load("/home/gummi/netprop/masterRes.rdata")
+library(ggplot2)
+library(kableExtra)
+library(dplyr)
+library(plotly)
+library(kableExtra)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+diseaseMapping <- read.csv("/home/gummi/netprop/data/phenotypeMapping.csv")
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE) 
+
+```
+
+
+```{r include=FALSE} 
+
+distFuncsT <- c("euclidean", "manhattan", "cosine", "cosineDist", "cosineSharp2",
+                "pearsonDist", "spearmanDist", "kendall", "kendallDist")
+
+varCuttOffsT <- c("0","0.25", "0.5", "0.75","0Center")
+        
+
+```
+
+
+## Node Degree Relationship
+
+
+```{r, echo=FALSE,out.width="49%", out.height="20%",fig.cap="",fig.show='hold',fig.align='center'}
+knitr::include_graphics(c("/home/gummi/netprop/image4.png","/home/gummi/netprop/image5.png"))
+``` 
+
+---
+
+![](/home/gummi/netprop/image6.png)
+
+---
+
+## Overall Scores, All Traits {.tabset .tabset-pills}
+
+### No normalization
+
+```{r fig.height=15, fig.width=10, warning=FALSE}
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "noNorm", "AllTraitsOverallScores", masterRes)
+
+```
+
+### Eigen Centrality normalization
+
+```{r fig.height=15, fig.width=10}
+
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "ECnorm", "AllTraitsOverallScores", masterRes)
+
+
+```
+
+### Log Ratio Eigen Centrality normalization
+
+```{r fig.height=15, fig.width=10}
+
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "ECnormLog", "AllTraitsOverallScores", masterRes)
+
+
+```
+
+### Permutation Testing normalization
+
+```{r fig.height=15, fig.width=10}
+
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "permuteNormDegree", "AllTraitsOverallScores", masterRes)
+
+
+```
+
+
+## Overall Scores, EFO Traits Only {.tabset .tabset-pills}
+
+### No normalization
+
+```{r fig.height=15, fig.width=10, warning=FALSE}
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "noNorm", "EFOTraitsOverallScores", masterRes)
+
+```
+
+### Eigen Centrality normalization
+
+```{r fig.height=15, fig.width=10}
+
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "ECnorm", "EFOTraitsOverallScores", masterRes)
+
+
+```
+
+### Log Ratio Eigen Centrality normalization
+
+```{r fig.height=15, fig.width=10}
+
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "ECnormLog", "EFOTraitsOverallScores", masterRes)
+
+
+```
+
+### Permutation Testing normalization
+
+```{r fig.height=15, fig.width=10}
+
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "permuteNormDegree", "EFOTraitsOverallScores", masterRes)
+
+
+```
+
+
+
+## Orphanet Clinvar Clingen scores {.tabset .tabset-pills}
+
+### No normalization
+
+```{r fig.height=15, fig.width=10, warning=FALSE}
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "noNorm", "RareDiseasesOrphaEvaClingenScores", masterRes)
+
+```
+
+### Eigen Centrality normalization
+
+```{r fig.height=15, fig.width=10}
+
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "ECnorm", "RareDiseasesOrphaEvaClingenScores", masterRes)
+
+
+```
+
+### Log Ratio Eigen Centrality normalization
+
+```{r fig.height=15, fig.width=10}
+
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "ECnormLog", "RareDiseasesOrphaEvaClingenScores", masterRes)
+
+
+```
+
+### Permutation Testing normalization
+
+```{r fig.height=15, fig.width=10}
+
+
+plotDensityGrid(distFuncsT, varCuttOffsT, "permuteNormDegree", "RareDiseasesOrphaEvaClingenScores", masterRes)
+
+
+```
+
+---
+
+## UMAPs {.tabset .tabset-pills}
+
+
+### Euclidean
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["euclidean"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+
+### Manhattan
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["manhattan"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+### Cosine
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["cosine"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+
+### Kendall
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+
+## Cluster Legend {.tabset .tabset-pills}
+
+### Euclidean
+    
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["euclidean"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+
+### Manhattan
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["manhattan"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+### Cosine
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["cosine"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+### Kendall
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+
+
+## MDS {.tabset .tabset-pills}
+
+
+### Euclidean
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["euclidean"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```
+
+
+### Manhattan
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["manhattan"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```
+
+### Cosine
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["cosine"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```
+
+
+### Kendall
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```
+
+
+---
+
+## EFO only, Overall Scores
+
+## UMAPs {.tabset .tabset-pills}
+
+
+### Euclidean
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["euclidean"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+
+### Manhattan
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["manhattan"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+### Cosine
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["cosine"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+
+### Kendall
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+
+
+## Cluster Legend {.tabset .tabset-pills}
+
+### Euclidean
+    
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["euclidean"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+
+### Manhattan
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["manhattan"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+### Cosine
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["cosine"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+### Kendall
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+
+
+## MDS {.tabset .tabset-pills}
+
+
+### Euclidean
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["euclidean"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```
+
+
+### Manhattan
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["manhattan"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```
+
+### Cosine
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["cosine"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```
+
+
+### Kendall
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["EFOTraitsOverallScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```
+
+---
+
+## Rare Traits, Individual Dataset Scores
+
+## UMAPs {.tabset .tabset-pills}
+
+
+### Euclidean
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["euclidean"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+
+### Manhattan
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["manhattan"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+### Cosine
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["cosine"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+
+### Kendall
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+
+## Cluster Legend {.tabset .tabset-pills}
+
+### Euclidean
+    
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["euclidean"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+
+### Manhattan
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["manhattan"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+### Cosine
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["cosine"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+### Kendall
+```{r include=TRUE, warning=FALSE}
+
+df <- masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```
+
+
+
+## MDS {.tabset .tabset-pills}
+
+
+### Euclidean
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["euclidean"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```
+
+
+### Manhattan
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["manhattan"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+sure
+```
+
+### Cosine
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["cosine"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```
+
+
+### Kendall
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["RareDiseasesOrphaEvaClingenScores"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_cMDS"]])
+
+
+```

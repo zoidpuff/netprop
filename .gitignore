@@ -26,3 +26,13 @@ compareDist/netpropDistanceMetricCompare_AllTraitsOverallScores_noNorm_0_FALSE_F
 compareDist/netpropDistanceMetricCompare_AllTraitsOverallScores_noNorm_0.25_FALSE_FALSE_pearsonDist.rdata
 resSmall.rdata
 resBig.rdata
+
+/compareDist
+/compareDistOld
+image (4).png:Zone.Identifier
+image (6).png:Zone.Identifier
+image (5).png:Zone.Identifier
+masterRes.rdata
+Code/ComparingDistanceMetrics-copy.html
+Code/ComparingDistanceMetrics.html
+Code/ComparingDistanceMetrics.md

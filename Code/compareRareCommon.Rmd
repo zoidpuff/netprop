@@ -445,6 +445,7 @@ write.csv(arrange(relationshipsDFunique,desc(cosine)), "relationshipsWithNames.c
 
 
 
+
 # Filter out terms that theraputic areas is only meausrments
 #relationshipsDFunique <- relationshipsDFunique %>% filter(all(unlist(idToTherapeuticArea[term1]) != "EFO_0001444") & all(unlist(idToTherapeuticArea[term2]) != "EFO_0001444"))	
 # Create a true/false vector with sapply
