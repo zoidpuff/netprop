@@ -130,7 +130,7 @@ for(dataset in names(assocDataList)){
                             "/results/compareDistDamping/netpropDistanceMetricCompare_",
                             dataset,"_",
                             NORMFUNC[[3]],"_",
-                            dampingFactor[1],"_"
+                            dampingFactor[1],"_",
                             "_",distanceMetric,".rdata"))
                 
                 cat(file="internalFinished.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Damping: ",dampingFactor[1], " DistanceMetric: ", distanceMetric,"\n"))	
