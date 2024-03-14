@@ -704,7 +704,7 @@ computeDistance <- function(matrix, distFuncSettings) {
             return(proxy::as.simil(cor(t(matrix), method = method)))
         }
     } else if (method == "cosine") {
-        temp <- proxy::simil(matrix, method = method)idToName
+        temp <- proxy::simil(matrix, method = method)
         # Sharpen the cosine similarity
         if ("p" %in% names(distFuncSettings)) {
             temp <- temp^distFuncSettings$p
