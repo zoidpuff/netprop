@@ -58,15 +58,15 @@ distanceMetricList <- list(
   #"kendallDist" = list("method" = "kendall","returnDist" = NA),
   #"kendall" = list("method" = "kendall"),
   #"euclidean" = list("method" = "euclidean","returnDist" = NA),
-  "manhattan" = list("method" = "manhattan","returnDist" = NA),
-  "cosine" = list("method" = "cosine"),
-  "cosineSharp2" = list("method" = "cosine","p" = 2),
+  "manhattan" = list("method" = "manhattan","returnDist" = NA)
+  #"cosine" = list("method" = "cosine"),
+  #"cosineSharp2" = list("method" = "cosine","p" = 2),
   #"cosineSharp3" = list("method" = "cosine","p" = 3),
   #"cosineDist" = list("method" = "cosine","returnDist" = NA),
   #"cosineSharp2Dist" = list("method" = "cosine","p" = 2,"returnDist" = NA),
   #"cosineSharp3Dist" = list("method" = "cosine","p" = 3,"returnDist" = NA),
   #"pearsonDist" = list("method" = "pearson","returnDist" = NA),	
-  "spearmanDist" = list("method" = "spearman","returnDist" = NA)
+  #"spearmanDist" = list("method" = "spearman","returnDist" = NA)
 )
 
 
@@ -107,7 +107,7 @@ dampingList <- list(c("0.95","FALSE","FALSE"),
 
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
-        temp <- foreach(dampingFactor = dampingList, .combine = list, .packages = c('dplyr',"ggplot2"),.errorhandling = "remove") %dopar% {
+        temp <- foreach(dampingFactor = dampingList, .combine = list, .packages = c('dplyr',"ggplot2"),.errorhandling = "stop") %dopar% {
             netPropDataFrame <- runNetProp(network = intGraph,
                                 assocData = assocDataList[[dataset]],
                                 cutoff = c("value" = 0.5, "number" = 2),
