@@ -59,14 +59,14 @@ distanceMetricList <- list(
   #"kendall" = list("method" = "kendall"),
   #"euclidean" = list("method" = "euclidean","returnDist" = NA),
   "manhattan" = list("method" = "manhattan","returnDist" = NA)
-  #"cosine" = list("method" = "cosine"),
+  "cosine" = list("method" = "cosine"),
   #"cosineSharp2" = list("method" = "cosine","p" = 2),
   #"cosineSharp3" = list("method" = "cosine","p" = 3),
   #"cosineDist" = list("method" = "cosine","returnDist" = NA),
   #"cosineSharp2Dist" = list("method" = "cosine","p" = 2,"returnDist" = NA),
   #"cosineSharp3Dist" = list("method" = "cosine","p" = 3,"returnDist" = NA),
   #"pearsonDist" = list("method" = "pearson","returnDist" = NA),	
-  #"spearmanDist" = list("method" = "spearman","returnDist" = NA)
+  "spearmanDist" = list("method" = "spearman","returnDist" = NA)
 )
 
 
