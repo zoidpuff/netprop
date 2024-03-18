@@ -125,7 +125,8 @@ for(dataset in names(assocDataList)){
                         relationships,
                         8,
                         TRUE,
-                        diseaseDF)
+                        diseaseDF,
+                        TRUE) # REUTRN DISTS
                         save(res, file = paste0(netPropPath,
                             "/results/compareDistDamping/netpropDistanceMetricCompare_",
                             dataset,"_",
