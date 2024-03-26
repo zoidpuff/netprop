@@ -1,0 +1,124 @@
+---
+title: "Untitled"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+
+```{r load funcs}
+
+netPropPath <- '/home/gummi/netprop'
+
+library(igraph)
+library(dplyr)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+
+
+```
+
+
+```{r load data}
+
+
+# Load the data
+assocDataBySource <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE)
+
+# diseaseDF
+load(paste0(netPropPath,"/data/diseases.rdata"))
+idToName <- setNames(diseaseDF$name, diseaseDF$id)
+
+```
+
+
+```{r get set of rare traits} 
+
+
+# Analyis for rare diseases????
+assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","clingen","eva","eva_somatic")) 
+
+assocDataRareDiseasesCollapsed <- assocDataRareDiseases[,c("score","diseaseId","targetId")] %>% 
+  group_by(targetId,diseaseId) %>% 
+  summarise(score = max(score)) %>%
+    ungroup() %>%
+  filter(score > 0.5)	
+
+
+rareDiseaseAssocsFromOTgenetics <- assocDataBySource %>% 
+          filter(datasourceId == "ot_genetics_portal") %>%
+          filter(diseaseId %in% unique(assocDataRareDiseasesCollapsed$diseaseId)) %>%
+          filter(score > 0.5)	
+
+
+# Make a venn diagram to show the overlap between the targetGenes of the two datasets
+
+library(ggvenn)
+
+vennData <- list("Genes From EVA, Clingen and Orphanet" = unique(assocDataRareDiseasesCollapsed$targetId),
+                 "Genes From OT genetics" = unique(rareDiseaseAssocsFromOTgenetics$targetId))
+
+ggvenn(vennData)
+
+length(unique(assocDataRareDiseasesCollapsed$diseaseId))
+```
+
+
+```{r get set of rare traits} 
+
+
+# Analyis for rare diseases????
+assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","clingen","eva","eva_somatic")) 
+
+assocDataRareDiseases$name <- idToName[assocDataRareDiseases$diseaseId]
+
+View(filter(assocDataRareDiseases,datasourceId == "eva_somatic")) 
+
+assocDataRareDiseasesCollapsed <- assocDataRareDiseases[,c("score","diseaseId","targetId")] %>% 
+  group_by(targetId,diseaseId) %>% 
+  summarise(score = max(score)) %>%
+    ungroup() %>%
+    filter(score > 0.3)	
+
+
+rareDiseaseAssocsFromOTgenetics <- assocDataBySource %>% 
+          filter(datasourceId == "ot_genetics_portal") %>%
+          filter(diseaseId %in% unique(assocDataRareDiseasesCollapsed$diseaseId))
+
+# For each trait, calculate the number of genes that are associated with it in each dataset and the number of genes that are associated with it in both datasets
+traitList <- list()
+for(trait in unique(c(assocDataRareDiseasesCollapsed$diseaseId, rareDiseaseAssocsFromOTgenetics$diseaseId))){
+  ot <- rareDiseaseAssocsFromOTgenetics %>% filter(diseaseId == trait)
+  other <- assocDataRareDiseasesCollapsed %>% filter(diseaseId == trait) 
+  all <- unique(c(ot$targetId, other$targetId))
+  overlapGenes <- intersect(ot$targetId, other$targetId)
+  traitList[[trait]] <- c("ot" = nrow(ot), "rd" = nrow(other), "overlap" = length(overlapGenes), "all" = length(all))
+  
+}
+
+traitDF <- do.call(rbind, traitList) %>% as.data.frame()
+
+traitDF <- traitDF %>% 
+  mutate(PropUniqueOT = (ot - overlap) / all,
+         PropUniqueRD = (rd - overlap) / all,
+         PropOverlap = overlap / all)
+
+traitDFfilt <- traitDF %>% filter(ot != 0)
+
+
+summary(traitDFfilt$PropOverlap)
+summary(traitDFfilt$PropUniqueOT)
+summary(traitDFfilt$PropUniqueRD)
+
+traitDF$name <- idToName[rownames(traitDF)]
+
+# filter out overly generic traits
+# filter out monogenics 
+# score filtering
+# clinvar >= 0.5 filter
+# orphanet > 0.5 filter
+# leave out clingen
+# leave out eva_somatic
+```

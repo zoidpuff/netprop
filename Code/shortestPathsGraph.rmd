@@ -1,0 +1,156 @@
+---
+title: "Untitled"
+output: github_document
+---
+
+
+```{r setup, include=FALSE}
+netPropPath <- '/home/gummi/netprop'
+library(igraph)
+library(dplyr)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+```
+
+
+## Create the graph
+```{r }
+
+
+# Load the diseases.rdata
+
+load(paste0(netPropPath,"/data/diseases.rdata"))
+
+# Write a for loop that traverses the diseases and gathers the id for each element in the children list, adds a row to a dataframe with the disease id and the child id
+
+# Function that returns a list of id and children pairs
+getChildren <- function(ind) {
+    disease <- diseaseDF$id[ind]
+    listOfChildren <- unlist(diseaseDF$children[ind])
+
+    if(length(listOfChildren) == 0) return(data.frame(disease = disease, child = NA))
+
+    return(data.frame(disease = disease, child = listOfChildren))
+}
+
+
+# Create a list of all the children of the diseases
+
+diseaseChildrenDF <- lapply(1:length(diseaseDF$id), getChildren) %>% do.call(rbind, .)	
+
+dim(diseaseChildrenDF)
+
+# Remove any rows that have NA in the child column
+
+diseaseChildrenDF <- filter(diseaseChildrenDF, !is.na(child))
+
+dim(diseaseChildrenDF)
+
+# Create a graph from the diseaseChildrenDF
+
+diseaseGraph <- graph_from_data_frame(diseaseChildrenDF,  directed = TRUE)
+
+igraph::is.connected(diseaseGraph)
+
+# Clean the graph by removing any self loops and redundant edges
+
+diseaseGraph <- igraph::simplify(diseaseGraph, remove.multiple = TRUE, remove.loops = TRUE)
+
+# Find the connected components of the graph
+
+diseaseComponents <- igraph::components(diseaseGraph)
+
+# Theyre are 2 components, one with most of the nodes and one with just a few, examine smaller one
+
+weirdos <- V(diseaseGraph)[which(diseaseComponents$membership == 2)]
+
+huih <- diseaseDF[which(diseaseDF$id %in% weirdos$name),]
+
+# The smaller component seems to be only medical procedures, so not needed for this analysis
+
+diseaseGraph <- delete.vertices(diseaseGraph, which(diseaseComponents$membership == 2))
+
+# Check if the graph is connected
+
+igraph::is.connected(diseaseGraph)
+
+
+diseaseDF[which(diseaseDF$id %in% unique(unlist(diseaseDF$therapeuticAreas))),c("id","name")]
+
+a <- sort(table(unlist(diseaseDF$therapeuticAreas)),decreasing=T)
+
+# Get the names from the diseaseDF using the names of a
+
+b <- diseaseDF$name[match(names(a),diseaseDF$id)]
+
+# Create a dataframe with the counts and the names
+
+c <- data.frame(count = a, name = b)
+
+# Create a convenicance mappings
+idToName <- setNames(diseaseDF$name, diseaseDF$id)
+idToTherapeuticArea <- setNames(diseaseDF$therapeuticAreas, diseaseDF$id)
+idToDescription <- setNames(diseaseDF$description, diseaseDF$id)
+
+### Remove hub nodes from graph
+# Create a sorted decreasing dataframe with the degree of each node id and name
+
+degreeDF <- data.frame(degree = degree(diseaseGraph), id = V(diseaseGraph)$name,name = idToName[V(diseaseGraph)$name]) %>% arrange(desc(degree))
+
+# View(degreeDF)
+
+# Remove nodes with degree greater then 4000
+
+diseaseGraphPruned <- delete.vertices(diseaseGraph, which(degree(diseaseGraph) > 300))
+
+is.connected(diseaseGraphPruned)
+
+sum(degree(diseaseGraphPruned) == 0)
+
+stragglers <- degreeDF %>% 
+                filter(id %in% names(V(diseaseGraphPruned)[degree(diseaseGraphPruned) == 0] ))
+
+# Remove straggles (diseases that are only connected via very broad nodes)
+
+
+
+diseaseGraphPruned <- delete.vertices(diseaseGraph, which(degree(diseaseGraphPruned) == 0 ))
+is.connected(diseaseGraphPruned)
+
+sum(degree(diseaseGraphPruned) == 0)
+
+
+
+```
+
+## Calculate the network properties
+
+```{r }
+# 9.022679
+
+# compute mean distance
+shortestPATHS <- distances(as.undirected(diseaseGraphPruned))
+
+# Convert to distance matrix
+#shortestPATHS <- as.dist(shortestPATHS)
+
+# Save the results
+save(shortestPATHS, file = paste0(netPropPath, "/data/shortestPATHSDiseases.RData"))
+
+```
+
+
+
+```{r }
+
+
+# Convert to distance matrix
+#shortestPATHS <- as.dist(shortestPATHS)
+
+# Save the results
+load( file = paste0(netPropPath, "/data/shortestPATHSDiseases.RData"))
+
+shortestPATHS <- stats::as.dist(shortestPATHS)
+
+save(shortestPATHS, file = paste0(netPropPath, "/data/shortestPATHSDiseases.RData"))
+
+```

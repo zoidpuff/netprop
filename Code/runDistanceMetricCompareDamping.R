@@ -13,6 +13,9 @@ cl <- makeCluster(no_cores)
 
 registerDoParallel(cl)
 
+# Loads shortestPATHS dist object with 
+load("/home/gummi/netprop/data/shortestPATHSDiseases.RData")
+
 
 ########### LOAD GRAPH DATA ###########
 intData <- read.csv(paste0(netPropPath,"/data/interactionAll.csv"), stringsAsFactors = FALSE)
@@ -57,7 +60,8 @@ assocDataList <- list("AllTraitsOverallScores" = assocDataOverall)
 distanceMetricList <- list(
   #"kendallDist" = list("method" = "kendall","returnDist" = NA),
   #"kendall" = list("method" = "kendall"),
-  #"euclidean" = list("method" = "euclidean","returnDist" = NA),
+  "minkowski05" = list("method" = "minkowski","returnDist" = NA,"p" = 0.5),
+  "euclidean" = list("method" = "euclidean","returnDist" = NA),
   "manhattan" = list("method" = "manhattan","returnDist" = NA),
   "cosine" = list("method" = "cosine"),
   #"cosineSharp2" = list("method" = "cosine","p" = 2),
@@ -65,8 +69,9 @@ distanceMetricList <- list(
   #"cosineDist" = list("method" = "cosine","returnDist" = NA),
   #"cosineSharp2Dist" = list("method" = "cosine","p" = 2,"returnDist" = NA),
   #"cosineSharp3Dist" = list("method" = "cosine","p" = 3,"returnDist" = NA),
-  #"pearsonDist" = list("method" = "pearson","returnDist" = NA),	
-  "spearmanDist" = list("method" = "spearman","returnDist" = NA)
+  "pearson" = list("method" = "pearson"),	
+  "spearman" = list("method" = "spearman"),
+    "jsd" = list("method" = "jsd"),
 )
 
 
@@ -79,25 +84,7 @@ normList <- list(list(NULL,NULL,"noNorm"),
 
 
 
-dampingList <- list(c("0.95","FALSE","FALSE"),
-                    c("0.9","FALSE","FALSE"),
-                    c("0.85","FALSE","FALSE"),
-                    c("0.8","FALSE","FALSE"),
-                    c("0.75","FALSE","FALSE"),
-                    c("0.7","FALSE","FALSE"),
-                    c("0.65","FALSE","FALSE"),
-                    c("0.6","FALSE","FALSE"),
-                    c("0.55","FALSE","FALSE"),
-                    c("0.5","FALSE","FALSE"),
-                    c("0.45","FALSE","FALSE"),
-                    c("0.4","FALSE","FALSE"),
-                    c("0.35","FALSE","FALSE"),
-                    c("0.3","FALSE","FALSE"),
-                    c("0.25","FALSE","FALSE"),
-                    c("0.2","FALSE","FALSE"),
-                    c("0.15","FALSE","FALSE"),
-                    c("0.1","FALSE","FALSE"),
-                    c("0.05","FALSE","FALSE"))
+dampings <- as.character(seq(0.02,0.98,by = 0.02))
 
 
 
@@ -107,18 +94,18 @@ dampingList <- list(c("0.95","FALSE","FALSE"),
 
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
-        temp <- foreach(dampingFactor = dampingList, .combine = list, .packages = c('dplyr',"ggplot2"),.errorhandling = "stop") %dopar% {
+        temp <- foreach(dampingFactor = dampings, .combine = list, .packages = c('dplyr',"ggplot2"),.errorhandling = "remove") %dopar% {
             netPropDataFrame <- runNetProp(network = intGraph,
                                 assocData = assocDataList[[dataset]],
                                 cutoff = c("value" = 0.5, "number" = 2),
                                 binarize = TRUE,
-                                damping = as.numeric(dampingFactor[1]),
+                                damping = as.numeric(dampingFactor),
                                 NormFunc = NORMFUNC[[1]],
                                 settingsForNormFunc = NORMFUNC[[2]])
             relationships <- relationshipsAll %>% filter(term1 %in% rownames(netPropDataFrame) & term2 %in% rownames(netPropDataFrame))
             relationships <- as.matrix(relationships[,c("term1","term2")])
             for(distanceMetric in names(distanceMetricList)){
-                cat(file="internalStarted.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Damping: ",dampingFactor[1], " DistanceMetric: ", distanceMetric,"\n"))	
+                cat(file="internalStarted.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Damping: ",dampingFactor, " DistanceMetric: ", distanceMetric,"\n"))	
                 res <- compareDistanceMetric(as.matrix(netPropDataFrame),
                         computeDistance,
                         distanceMetricList[[distanceMetric]],	
@@ -126,15 +113,16 @@ for(dataset in names(assocDataList)){
                         8,
                         TRUE,
                         diseaseDF,
-                        TRUE) # REUTRN DISTS
+                        FALSE, # RETURN DISTS
+                        shortestPATHS) 
                         save(res, file = paste0(netPropPath,
                             "/results/compareDistDamping/netpropDistanceMetricCompare_",
                             dataset,"_",
                             NORMFUNC[[3]],"_",
-                            dampingFactor[1],"_",
+                            dampingFactor,"_",
                             "_",distanceMetric,".rdata"))
                 
-                cat(file="internalFinished.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Damping: ",dampingFactor[1], " DistanceMetric: ", distanceMetric,"\n"))	
+                cat(file="internalFinished.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Damping: ",dampingFactor, " DistanceMetric: ", distanceMetric,"\n"))	
 
             }
         }

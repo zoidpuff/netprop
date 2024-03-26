@@ -12,7 +12,7 @@ insertIntoNestedList <- function(lst, keys, value) {
 }
 
 # Folder path containing the .rdata files
-folderPath <- "/home/gummi/netprop/compareDist"
+folderPath <- "/home/gummi/netprop/compareDistDamping"
 
 # Initialize the master list
 masterRes <- list()
@@ -37,10 +37,12 @@ for (file in files) {
   masterRes <- insertIntoNestedList(masterRes, keys, res)
 }
 
-save(masterRes, file = "masterRes.rdata")
+save(masterRes, file = "masterResDamping.rdata")
 
 # At this point, masterRes is structured as per your filename components
 # To access an element, use something like:
 # masterRes[["AllTraitsOverallScores"]][["noNorm"]][["0"]][["TRUE"]][["FALSE"]][["cosineDist"]]
 
 
+# Bash command that goes through a folder and changes each occurrnce of __ to a _
+# for file in *; do mv "$file" `echo $file | tr -s '__' '_'`; done

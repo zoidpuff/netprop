@@ -1,0 +1,136 @@
+---
+title: "Topic Modeling"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+netPropPath <- '/home/gummi/netprop'
+library(igraph)
+library(dplyr)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+```
+
+
+## Create the graph
+```{r }
+
+intData <- read.csv(paste0(netPropPath,"/data/interactionAll.csv"), stringsAsFactors = FALSE)
+
+# Filter out any row that have scoring less then 0.75 (perhaps other values should be tested)
+
+intDataFilt  <- intData %>% filter(!(sourceDatabase == "string" & scoring <= 0.4)) # 0.4 only for stringdb
+
+rm(intData)
+
+intGraph <- graph.data.frame(intDataFilt[,c("targetA","targetB" )], directed = FALSE)
+
+# Remove any self loops and redundant edges
+
+intGraph <- simplify(intGraph, remove.multiple = TRUE, remove.loops = TRUE)
+
+# remove orphan nodes
+
+intGraph <- delete.vertices(intGraph, which(degree(intGraph) == 0))
+```
+
+
+
+```{r }
+
+# Load the association data
+
+
+assocDataOverallEFO <-  read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE) %>%
+    filter(grepl("EFO",diseaseId))
+
+
+
+```
+
+```{r }
+
+
+netPropDataFrame <- runNetProp(network = intGraph,
+                    assocData = assocDataOverallEFO,
+                    cutoff = c("value" = 0.5, "number" = 3),
+                    binarize = TRUE,
+                    damping = 0.85,
+                    NormFunc = NULL,
+                    settingsForNormFunc = list())
+
+
+allVals <- as.vector(netPropDataFrame)
+
+# Plot the distribution of the values with ggplot
+
+library(ggplot2)
+
+ggplot(data.frame(x = allVals), aes(x = x)) + geom_histogram(bins = 100) + theme_classic() + scale_y_log10()
+
+
+rm(allVals)
+```
+
+
+```{r }
+
+netPropMatrix <- as.matrix(netPropDataFrame)
+
+# Make sparse by setting anything lower then third quartile to 0
+
+netPropMatrix[netPropMatrix < quantile(netPropMatrix, 0.75)] <- 0
+
+# Create a sparse matrix 
+
+netPropMatrixSparse <- Matrix::Matrix(as.vector(netPropMatrix),nrow = nrow(netPropMatrix), sparse = TRUE)
+
+colnames(netPropMatrixSparse) <- colnames(netPropMatrix)
+rownames(netPropMatrixSparse) <- rownames(netPropMatrix)
+
+```
+
+```{r }
+
+# Create a topic model using LDA ( Im not sure this makes sense since this method is intedned to take in term frequence and not probilities)
+for(k in seq(5, 50, 5)){
+  LDAmodel <- textmineR::FitLdaModel(netPropMatrixSparse*1000,	
+                    k = k,
+                     iterations = 500, 
+                     burnin = 180,
+                     alpha = 0.1,
+                     beta = 0.05,
+                     optimize_alpha = TRUE,
+                     calc_likelihood = TRUE,
+                     calc_coherence = TRUE,
+                     calc_r2 = TRUE,
+                     cpus = 2)
+    MeanCoherence <- mean(LDAmodel$coherence)
+    print(paste0("k: ", k, " Mean Coherence: ", MeanCoherence))
+  
+}
+
+```
+
+
+
+# NMF 
+
+
+```{r }
+
+# Create a topic model using NMF
+
+# Remove all zero columns
+
+#str(netPropMatrix)
+#netPropMatrix <- netPropMatrix[,colSums(netPropMatrix) != 0]
+#str(netPropMatrix)
+
+NMFmodel <- NMF::nmf(netPropMatrix, 
+                    rank = 10
+                    )
+
+
+```
+
+
