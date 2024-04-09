@@ -39,3 +39,9 @@ Code/ComparingDistanceMetrics.html
 Code/ComparingDistanceMetrics.md
 Code/ComparingDistanceMetricsDamping.html
 masterResDamping.rdata
+/metastore_db
+internalFinished.txt
+internalStarted.txt
+*.pdf
+*.rdata
+*.svg

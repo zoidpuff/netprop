@@ -1,0 +1,97 @@
+---
+title: "Comparing damping"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+netPropPath <- "/home/gummi/netprop"
+load("/home/gummi/netprop/masterResMouseRareGWAS.rdata")
+library(ggplot2)
+library(dplyr)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+#diseaseMapping <- read.csv("/home/gummi/netprop/data/phenotypeMapping.csv")
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE) 
+
+```
+
+
+```{r } 
+masterRes[["assocMouseGWAS"]][["noNorm"]][["spearman"]][["summaryRelated"]]
+masterRes[["assocMouseGWAS"]][["noNorm"]][["spearman"]][["summaryRandom"]]
+
+generatePlotsFromDistCompareResults(masterRes[["assocMouseGWAS"]][["noNorm"]][["spearman"]], densityOnly = TRUE )[[1]] + ggtitle("Mouse ,Spearman, noNorm")
+generatePlotsFromDistCompareResults(masterRes[["assocMouseGWAS"]][["noNorm"]][["manhattan"]], densityOnly = TRUE )[[1]] + ggtitle("Mouse ,Manhattan, noNorm")
+generatePlotsFromDistCompareResults(masterRes[["assocMouseGWAS"]][["noNorm"]][["jsd"]], densityOnly = TRUE )[[1]] + ggtitle("Mouse ,JSD, noNorm")
+generatePlotsFromDistCompareResults(masterRes[["assocMouseGWAS"]][["noNorm"]][["minkowski05"]], densityOnly = TRUE )[[1]] + ggtitle("Mouse ,Minkowski05, noNorm")
+
+
+generatePlotsFromDistCompareResults(masterRes[["assocRareGWAS"]][["noNorm"]][["spearman"]], densityOnly = TRUE )[[1]] + ggtitle("Rare, Spearman, noNorm")
+generatePlotsFromDistCompareResults(masterRes[["assocRareGWAS"]][["noNorm"]][["manhattan"]], densityOnly = TRUE )[[1]] + ggtitle("Rare, Manhattan, noNorm")
+generatePlotsFromDistCompareResults(masterRes[["assocRareGWAS"]][["noNorm"]][["jsd"]], densityOnly = TRUE )[[1]] + ggtitle("Rare, JSD, noNorm")
+generatePlotsFromDistCompareResults(masterRes[["assocRareGWAS"]][["noNorm"]][["minkowski05"]], densityOnly = TRUE )[[1]] + ggtitle("Rare, Minkowski05, noNorm")
+
+```
+
+```{r include=FALSE} 
+
+distFuncsT <- c("manhattan", "cosine", "spearmanDist")
+
+dampingP <- as.character(seq(0.05,0.95,0.05))
+
+
+plotDensityGrid <- function(distFuncs, dampingParams, normMethod, dataset, masterRes) {
+
+    listOfPlots <- list()
+      for(dist in distFuncs) {
+        for(damping in dampingParams) {
+            #print(paste(dist, damping))
+            plots <- generatePlotsFromDistCompareResults( masterRes[[dataset]][[normMethod]][[damping]][[dist]], densityOnly = TRUE )
+            listOfPlots[[paste(damping,dist)]] <- plots[[1]] + 
+            theme(axis.title.x=element_blank(),
+                  axis.text.y=element_blank(),
+                  axis.ticks.y=element_blank()) 
+
+
+            if(damping == dampingParams[1]) {
+                listOfPlots[[paste(damping,dist)]] <- listOfPlots[[paste(damping,dist)]] + ggtitle(dist) 
+            } else {
+                listOfPlots[[paste(damping,dist)]] <- listOfPlots[[paste(damping,dist)]] + ggtitle("")
+            }
+            if(dist == distFuncs[1]) {
+                listOfPlots[[paste(damping,dist)]] <- listOfPlots[[paste(damping,dist)]] + ylab(as.character(damping))
+            } else {
+                listOfPlots[[paste(damping,dist)]] <- listOfPlots[[paste(damping,dist)]] + ylab("") }
+          } 
+      }
+
+        plotT <- cowplot::plot_grid(plotlist = listOfPlots, ncol = length(distFuncs),byrow = FALSE)
+        return(plotT)
+
+
+}
+        
+
+```
+
+
+## Overall Scores, All Traits {.tabset .tabset-pills}
+
+### No normalization
+
+```{r fig.height=25, fig.width=10, warning=FALSE, echo=FALSE, message=FALSE}
+
+plotDensityGrid(distFuncsT, dampingP, "noNorm", "AllTraitsOverallScores", masterRes)
+
+```
+
+
+### Log Ratio Eigen Centrality normalization
+
+```{r fig.height=25, fig.width=10,  echo=FALSE, message=FALSE}
+
+
+plotDensityGrid(distFuncsT, dampingP, "ECnormLog", "AllTraitsOverallScores", masterRes)
+
+
+```

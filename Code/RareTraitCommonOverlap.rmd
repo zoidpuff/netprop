@@ -38,54 +38,125 @@ idToName <- setNames(diseaseDF$name, diseaseDF$id)
 
 
 # Analyis for rare diseases????
-assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","clingen","eva","eva_somatic")) 
+#assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","clingen","eva","eva_somatic")) 
 
-assocDataRareDiseasesCollapsed <- assocDataRareDiseases[,c("score","diseaseId","targetId")] %>% 
-  group_by(targetId,diseaseId) %>% 
-  summarise(score = max(score)) %>%
-    ungroup() %>%
-  filter(score > 0.5)	
+#assocDataRareDiseasesCollapsed <- assocDataRareDiseases[,c("score","diseaseId","targetId")] %>% 
+#  group_by(targetId,diseaseId) %>% 
+#  summarise(score = max(score)) %>%
+#    ungroup() %>%
+#  filter(score > 0.5)	
+#
+#
+#rareDiseaseAssocsFromOTgenetics <- assocDataBySource %>% 
+#          filter(datasourceId == "ot_genetics_portal") %>%
+#          filter(score > 0.2)	%>%
+#          filter(diseaseId %in% unique(assocDataRareDiseasesCollapsed$diseaseId)) 
 
-
-rareDiseaseAssocsFromOTgenetics <- assocDataBySource %>% 
-          filter(datasourceId == "ot_genetics_portal") %>%
-          filter(diseaseId %in% unique(assocDataRareDiseasesCollapsed$diseaseId)) %>%
-          filter(score > 0.5)	
-
+#assocDataRareDiseasesCollapsed <- assocDataRareDiseasesCollapsed %>% 
+#              filter(diseaseId %in% unique(rareDiseaseAssocsFromOTgenetics$diseaseId))
 
 # Make a venn diagram to show the overlap between the targetGenes of the two datasets
 
-library(ggvenn)
+#library(ggvenn)
 
-vennData <- list("Genes From EVA, Clingen and Orphanet" = unique(assocDataRareDiseasesCollapsed$targetId),
-                 "Genes From OT genetics" = unique(rareDiseaseAssocsFromOTgenetics$targetId))
+#vennData <- list("Genes From EVA, Clingen and Orphanet (Score > 0.5) " = unique(assocDataRareDiseasesCollapsed$targetId),
+#                 "Genes From OT Genetics (L2G > 0.2)" = unique(rareDiseaseAssocsFromOTgenetics$targetId))
 
-ggvenn(vennData)
+#ggvenn(vennData) + ggtitle("Overlap of Gene Associations of Rare Diseases (Traits appearing in both datasets, n = 386)") 
 
-length(unique(assocDataRareDiseasesCollapsed$diseaseId))
+#length(unique(assocDataRareDiseasesCollapsed$diseaseId))
+
 ```
+
+
+
+```{r get set of rare traits} 
+assocDataBySource <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE)
+
+# Filter for only diseaseId == "EFO_0005140"
+autoImmuneAssocs <- assocDataBySource %>% filter(diseaseId == "EFO_0005140")
+
+dim(autoImmuneAssocs)
+
+autoImmuneAssocsEVA <- autoImmuneAssocs %>% filter(datasourceId == "eva")
+
+
+
+```
+
+
 
 
 ```{r get set of rare traits} 
 
 
 # Analyis for rare diseases????
-assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","clingen","eva","eva_somatic")) 
+assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","eva")) 
+# Filter out orphanet assoications that are less then or equal to 0.5
+assocDataRareDiseases <- assocDataRareDiseases %>% filter(!(datasourceId == "orphanet" & score <= 0.5))
+# Filter out eva tha assocationas that are less then 0.5
+assocDataRareDiseases <- assocDataRareDiseases %>% filter(!(datasourceId == "eva" & score <= 0.5))
 
+#"clingen" "eva_somatic"
 assocDataRareDiseases$name <- idToName[assocDataRareDiseases$diseaseId]
-
-View(filter(assocDataRareDiseases,datasourceId == "eva_somatic")) 
 
 assocDataRareDiseasesCollapsed <- assocDataRareDiseases[,c("score","diseaseId","targetId")] %>% 
   group_by(targetId,diseaseId) %>% 
   summarise(score = max(score)) %>%
-    ungroup() %>%
-    filter(score > 0.3)	
+    ungroup()
 
 
 rareDiseaseAssocsFromOTgenetics <- assocDataBySource %>% 
           filter(datasourceId == "ot_genetics_portal") %>%
-          filter(diseaseId %in% unique(assocDataRareDiseasesCollapsed$diseaseId))
+          filter(diseaseId %in% unique(assocDataRareDiseasesCollapsed$diseaseId)) %>%
+          filter(score > 0.4)
+
+assocDataRareDiseasesCollapsed <- assocDataRareDiseasesCollapsed %>% 
+              filter(diseaseId %in% unique(rareDiseaseAssocsFromOTgenetics$diseaseId))
+
+# Remove the disease term EFO_0000508
+assocDataRareDiseasesCollapsed <- assocDataRareDiseasesCollapsed %>% filter(diseaseId != "EFO_0000508")
+rareDiseaseAssocsFromOTgenetics <- rareDiseaseAssocsFromOTgenetics %>% filter(diseaseId != "EFO_0000508")
+
+rareDiseaseAssocsFromOTgenetics$source <- "ot_genetics_portal"
+assocDataRareDiseasesCollapsed$source <- "eva, orphanet"
+
+nrow(assocDataRareDiseasesCollapsed)
+nrow(rareDiseaseAssocsFromOTgenetics)
+
+vennData <- list( "OT Genetics (L2G > 0.4)" = unique(rareDiseaseAssocsFromOTgenetics$targetId),
+                  "EVA/Orph (> 0.5) " = unique(assocDataRareDiseasesCollapsed$targetId))
+
+geneVennPlot <- ggvenn(vennData,set_name_size = 4,auto_scale = TRUE) + 
+              labs(title = "Overlap of Genes associated with disease",
+              subtitle =  paste0("Across traits with associations that meet cutoff in both cohorts , n = ",length(unique(assocDataRareDiseasesCollapsed$diseaseId)),")")) +
+              scale_fill_manual(values = c("#FF0000","#0000FF")) 
+
+
+combDF <- rbind(rareDiseaseAssocsFromOTgenetics[,c("score","diseaseId","targetId", "source")],assocDataRareDiseasesCollapsed)
+
+# Save the combDF as a csv for later analysis
+write.csv(combDF, file = paste0(netPropPath,"/data/rarevsGWASAssocs0504.csv"), row.names = FALSE)
+
+combDF <- combDF[,c("diseaseId","targetId", "source")]
+# Change so that if a gene is in both datasets, it is only counted once and the source is set to "both"	
+
+for(trait in unique(combDF$diseaseId)){
+  temp <- combDF %>% filter(diseaseId == trait)
+  for(gene in unique(temp$targetId)){
+    if(sum(temp$targetId == gene) > 1){
+      indsVec <- which(combDF$diseaseId == trait & combDF$targetId == gene)
+      combDF$source[indsVec] <- "both"
+    }
+  }
+}
+nrow(combDF)
+combDF <- distinct(combDF)
+nrow(combDF)
+
+
+
+
 
 # For each trait, calculate the number of genes that are associated with it in each dataset and the number of genes that are associated with it in both datasets
 traitList <- list()
@@ -113,6 +184,7 @@ summary(traitDFfilt$PropUniqueOT)
 summary(traitDFfilt$PropUniqueRD)
 
 traitDF$name <- idToName[rownames(traitDF)]
+traitDFfilt$name <- idToName[rownames(traitDFfilt)]
 
 # filter out overly generic traits
 # filter out monogenics 
@@ -121,4 +193,254 @@ traitDF$name <- idToName[rownames(traitDF)]
 # orphanet > 0.5 filter
 # leave out clingen
 # leave out eva_somatic
+
+# Plot a barplot showing the proportion of genes that are unique to each dataset and the proportion of genes that are in both datasets
+
+library(ggplot2)
+
+traitDFfiltPivot <- traitDFfilt %>% 
+  select(ot,rd,overlap) %>%
+  tidyr::gather(key = "dataset", value = "counts")
+
+traitDFfiltPivot$dataset <- factor(traitDFfiltPivot$dataset,
+        levels = c("ot","overlap","rd"),
+        labels = c("ot_genetics_portal","both","eva, orphanet"))
+
+
+AssocCountsPerTraits <- combDF %>% group_by(diseaseId) %>% summarise(n = n()) %>% ungroup()
+
+AssocCountsPerTraits$diseaseId <- factor(AssocCountsPerTraits$diseaseId, levels = rownames(traitDFfilt))
+
+AssocCountsPerTraits$source <- "All"
+
+OriginCountsPerTrait <- combDF %>% group_by(source) %>% summarise(n = n()) %>% ungroup()
+
+
+traitDFfilt <- arrange(traitDFfilt,PropUniqueRD,PropOverlap )
+
+combDF$diseaseIdFactor <- factor(combDF$diseaseId, levels = rownames(traitDFfilt))
+combDF$source <- factor(combDF$source, levels = c("ot_genetics_portal","both","eva, orphanet"),
+                        labels = c("ot_genetics_portal","both","eva, orphanet"))
+
+
+b <- ggplot() + 
+                geom_boxplot(data = traitDFfiltPivot, aes(x = dataset, y = counts, fill = dataset),outlier.alpha = 0) + 
+                geom_jitter(data = traitDFfiltPivot, aes(x = dataset, y = counts, fill = dataset), width = 0.1, alpha = 0.3) +
+                geom_text(data = OriginCountsPerTrait, aes(x = source, y = 1.1, label = n), vjust = 1) +
+                ggtitle("") + 
+                ylab("# Associations Per Trait") + 
+                xlab("") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Origin of Association")) 
+
+
+
+a <- ggplot(combDF, aes(x = diseaseIdFactor, fill = source)) + 
+                geom_bar(position = "fill",width = 1) +
+                ggtitle("Per Trait Overlap of Gene-Disease Associations: \n Expert Curated Databases (Orphanet, Clinvar) vs. GWAS (OpenTargets Genetics L2G)") + 
+                ylab("Proportion of Associations") + 
+                xlab(paste0("Traits (n=",nrow(traitDFfilt),")")) +
+                theme_classic() +
+                theme(axis.text.x = element_blank(),
+                      axis.ticks.x = element_blank()) +
+                guides(fill=guide_legend(title="Origin of Association")) 
+aCountsPlot <- ggplot(AssocCountsPerTraits, aes(x = diseaseId, y = n, fill = source)) + 
+                geom_bar(stat = "identity", color = "gray") +
+                ylab("#Assoc") + 
+                xlab("") +
+                theme_classic() +
+                theme(axis.text.x = element_blank(),
+                      axis.ticks.x = element_blank()) +
+                      scale_y_log10() +
+                      # Add a empty legend so it aligns with previous plot
+                      guides(fill=guide_legend(title="Origin of Association")) +
+                      # Make the color palette black
+                      scale_fill_manual(values = c("All" = "gray")) 
+
+# Create a cowplot::plot_grid() with the ggvenn plot and and empty plot so widths align
+
+geneVennplotEmptyAdded <- cowplot::plot_grid(geneVennPlot,ggplot() + theme_minimal(),ncol =2,rel_widths = c(3,4))
+
+firstPlotRareDisease <- cowplot::plot_grid(a,aCountsPlot,ncol = 1,rel_heights = c(4,1))
+
+rareDiseaePlot <- cowplot::plot_grid(geneVennplotEmptyAdded,firstPlotRareDisease,b,ncol = 1, rel_heights = c(3,3,1.5))
+
+cowplot::ggsave2("rareDiseaseOverlapPlot.pdf",rareDiseaePlot,width = 10,height = 12)
+
+```
+
+# Mice
+
+```{r get set of rare traits}
+
+
+# Now take find the overlap between associations from the IMPC and open targets genetics
+mouseAssocs <- filter(assocDataBySource, datasourceId == "impc" & score > 0.5)
+
+rareDiseaseAssocsFromOTgenetics <- assocDataBySource %>% 
+          filter(datasourceId == "ot_genetics_portal") %>%
+          filter(score > 0.4) %>%
+          filter(diseaseId %in% unique(mouseAssocs$diseaseId)) 
+
+
+mouseAssocs <- mouseAssocs %>% 
+              filter(diseaseId %in% unique(rareDiseaseAssocsFromOTgenetics$diseaseId))
+
+
+
+mouseAssocs$source <- "impc"
+rareDiseaseAssocsFromOTgenetics$source <- "ot_genetics_portal"
+
+nrow(mouseAssocs)
+nrow(rareDiseaseAssocsFromOTgenetics)
+
+
+vennData <- list( "OT Genetics (L2G > 0.4)" = unique(rareDiseaseAssocsFromOTgenetics$targetId),
+                  "IMPC (> 0.5) " = unique(mouseAssocs$targetId))
+
+geneVennPlot <- ggvenn(vennData,set_name_size = 4,auto_scale = TRUE) + 
+              labs(title = "Overlap of Genes associated with disease",
+              subtitle =  paste0("Across traits with associations that meet cutoff in both cohorts , n = ",length(unique(mouseAssocs$diseaseId)),")")) +
+              scale_fill_manual(values = c("#FF0000","#0000FF")) 
+
+
+combDF <- rbind(rareDiseaseAssocsFromOTgenetics[,c("score","diseaseId","targetId", "source")],
+                mouseAssocs[,c("score","diseaseId","targetId", "source")])
+
+# Save the combDF for later analysis
+
+write.csv(combDF, file = paste0(netPropPath,"/data/impcGWASAssocs0504.csv"), row.names = FALSE)
+combDF <- combDF[,c("diseaseId","targetId", "source")]
+
+for(trait in unique(combDF$diseaseId)){
+  temp <- combDF %>% filter(diseaseId == trait)
+  for(gene in unique(temp$targetId)){
+    if(sum(temp$targetId == gene) > 1){
+      indsVec <- which(combDF$diseaseId == trait & combDF$targetId == gene)
+      combDF$source[indsVec] <- "both"
+    }
+  }
+}
+
+
+
+nrow(combDF)
+combDF <- distinct(combDF)
+nrow(combDF)
+
+
+
+
+
+# For each trait, calculate the number of genes that are associated with it in each dataset and the number of genes that are associated with it in both datasets
+traitList <- list()
+for(trait in unique(c(mouseAssocs$diseaseId, rareDiseaseAssocsFromOTgenetics$diseaseId))){
+  ot <- rareDiseaseAssocsFromOTgenetics %>% filter(diseaseId == trait)
+  other <- mouseAssocs %>% filter(diseaseId == trait) 
+  all <- unique(c(ot$targetId, other$targetId))
+  overlapGenes <- intersect(ot$targetId, other$targetId)
+  traitList[[trait]] <- c("ot" = nrow(ot), "mouse" = nrow(other), "overlap" = length(overlapGenes), "all" = length(all))
+  
+}
+
+traitDF <- do.call(rbind, traitList) %>% as.data.frame()
+
+traitDF <- traitDF %>% 
+  mutate(PropUniqueOT = (ot - overlap) / all,
+         PropUniqueMOUSE = (mouse - overlap) / all,
+         PropOverlap = overlap / all)
+
+
+traitDFfilt <- traitDF %>% filter(ot != 0)
+
+
+summary(traitDFfilt$PropOverlap)
+summary(traitDFfilt$PropUniqueOT)
+summary(traitDFfilt$PropUniqueMOUSE)
+
+traitDF$name <- idToName[rownames(traitDF)]
+traitDFfilt$name <- idToName[rownames(traitDFfilt)]
+
+# filter out overly generic traits
+# filter out monogenics 
+# score filtering
+# clinvar >= 0.5 filter
+# orphanet > 0.5 filter
+# leave out clingen
+# leave out eva_somatic
+
+# Plot a barplot showing the proportion of genes that are unique to each dataset and the proportion of genes that are in both datasets
+
+library(ggplot2)
+
+traitDFfiltPivot <- traitDFfilt %>% 
+  select(PropUniqueOT,PropUniqueMOUSE,PropOverlap) %>%
+  tidyr::gather(key = "dataset", value = "counts")
+
+
+traitDFfiltPivot$dataset <- factor(traitDFfiltPivot$dataset,
+        levels = c("ot","overlap","mouse"),
+        labels = c("ot_genetics_portal","both","impc"))
+
+traitDFfilt <- arrange(traitDFfilt,PropUniqueMOUSE,PropOverlap )
+
+combDF$diseaseIdFactor <- factor(combDF$diseaseId, levels = rownames(traitDFfilt))
+
+combDF$source <- factor(combDF$source, levels = c("ot_genetics_portal","both","impc"))
+
+AssocCountsPerTraits <- combDF %>% group_by(diseaseId) %>% summarise(n = n()) %>% ungroup()
+
+AssocCountsPerTraits$diseaseId <- factor(AssocCountsPerTraits$diseaseId, levels = rownames(traitDFfilt))
+
+AssocCountsPerTraits$source <- "All"
+
+OriginCountsPerTrait <- combDF %>% group_by(source) %>% summarise(n = n()) %>% ungroup()
+
+c <- ggplot() + 
+                geom_boxplot(data = traitDFfiltPivot, aes(x = dataset, y = counts, fill = dataset),outlier.alpha = 0) + 
+                geom_jitter(data = traitDFfiltPivot, aes(x = dataset, y = counts, fill = dataset), width = 0.1, alpha = 0.3) +
+                geom_text(data = OriginCountsPerTrait, aes(x = source, y = 1.1, label = n), vjust = 1) +
+                ggtitle("") + 
+                ylab("# Associations Per Trait") + 
+                xlab("") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Origin of Association")) 
+
+
+                
+
+d <- ggplot(combDF, aes(x = diseaseIdFactor, fill = source)) + 
+                geom_bar(position = "fill",width = 1) +
+                ggtitle("Per Trait Overlap of Gene-Disease Associations: \n Mouse KO Experiments (IMPC) vs. Human GWAS (OpenTargets Genetics L2G)") + 
+                ylab("Proportion of Associations") + 
+                xlab(paste0("Traits (n=",nrow(traitDFfilt),")")) +
+                theme_classic() +
+                theme(axis.text.x = element_blank(),
+                      axis.ticks.x = element_blank()) +
+                guides(fill=guide_legend(title="Origin of Association")) 
+
+dCountsPlot <- ggplot(AssocCountsPerTraits, aes(x = diseaseId, y = n, fill = source)) + 
+                geom_bar(stat = "identity", color = "gray",width=1) +
+                ylab("#Assoc") + 
+                xlab("") +
+                theme_classic() +
+                theme(axis.text.x = element_blank(),
+                      axis.ticks.x = element_blank()) +
+                      scale_y_log10() +
+                      # Add a empty legend so it aligns with previous plot
+                      guides(fill=guide_legend(title="Origin of Association")) +
+                      # Make the color palette black
+                      scale_fill_manual(values = c("All" = "gray")) 
+
+geneVennplotEmptyAdded <- cowplot::plot_grid(geneVennPlot,ggplot() + theme_minimal(),ncol =2,rel_widths = c(3,4))
+
+firstPlot <- cowplot::plot_grid(d,dCountsPlot,ncol = 1,rel_heights = c(4,1))
+
+mousePlot <- cowplot::plot_grid(geneVennplotEmptyAdded,firstPlot,c,ncol = 1, rel_heights = c(3,3,1.5))
+
+# Export mousePlot as pdf with ggsave
+
+cowplot::ggsave2("mouseDiseaseOverlapPlot.pdf",mousePlot,width = 10,height = 12)
+
+
 ```

@@ -439,263 +439,248 @@ runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 
 # It computes the distance between the network propagation vectors for each disease pair and for all possible pairs of diseases df
 
 
-
 compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, diseasePairs, randomSetSize,  compareALL = FALSE, diseasesDataFrame, returnDist = FALSE, diseaseShortestPaths = NULL) {
+    # Check if diseasePairs is a list, if not convert into a list
+    if(is.data.frame(diseasePairs) | is.matrix(diseasePairs)) {
+        diseasePairs <- list("_" = diseasePairs)
+    }
+
+    # Create a list to hold the results
+    resList <- list()
 
     # Make sure the netPropScores is a matrix
     netPropScores <- as.matrix(netPropScores)
 
-    # Compute the distances for disease pairs
-    relatedVec <- rep(NA,nrow(diseasePairs))
+    # Compute the distance matrix for all diseases
+    allMetric <- distFunc(netPropScores,distFuncSettings)
 
-    # For each disease pair
-    for(i in 1:nrow(diseasePairs)) {
-        relatedVec[i] <- as.vector(distFunc(netPropScores[c(diseasePairs[i,1],diseasePairs[i,2]),],distFuncSettings))
+    # Return the distance matrix if requested
+    if(returnDist) {
+        resList[["Rawdist"]] <- allMetric
+    }
+
+    # Compute the summary statistics of the distances for all diseases
+    allMetricVec <- as.vector(allMetric)
+    resList[["summaryAll"]] <- c(summary(allMetricVec),"SD." = sd(allMetricVec))
+    resList[["DensityAll"]] <- density(allMetricVec,na.rm = TRUE)
+    resList[["HistAll"]] <- hist(allMetricVec,plot=FALSE)
+    rm(allMetricVec)
+
+    # Function for going from matrix indices to 1d dist object indices
+    distdex <-function(i,j,n) {
+        return(n*(i-1) - i*(i-1)/2 + j-i)
     }
 
 
-    # Get the number of possible pairs of diseases in netPropScores
-    nDiseases <- nrow(netPropScores)
-    nPairsPossible <- nDiseases*(nDiseases-1)/2
-    nPairSamples <- round(randomSetSize*nrow(diseasePairs))
+    excludeFromRandomInds <- c()
+    relatedVecComb <- c()
 
+    #print(str(diseasePairs))
 
-    if(nPairsPossible < nPairSamples) {
-        print("Number of pairs to sample is greater than the number of possible pairs")
-        print("Setting number of pairs to sample to the number of possible pairs")
-        nPairSamples <- nPairsPossible
-    }
+    for(pair in names(diseasePairs)) {
 
-    proportionOfPossiblePairs <- nPairSamples/nPairsPossible
+        diseasePairsTemp <- diseasePairs[[pair]]
 
-    diseasePairsConcat <- apply(diseasePairs,1,function(x) paste0(sort(x),collapse = ""))
-
-    checkIfIsRelated <- function(x, dpc) {
-        sortX <- paste0(sort(x),collapse = "")
-        if(sortX %in% dpc) {
-            return(TRUE)
-        } else {
-            return(FALSE)
+        # Create a vector that maps the rownames of netPropScores to the row indices of the distance matrix
+        indsToRow <- setNames(1:nrow(netPropScores),rownames(netPropScores))
+        
+        # Compute the indices of the related diseases in the distance matrix
+        relatedDistInds <- rep(NA,nrow(diseasePairsTemp))
+        
+        for (i in 1:nrow(diseasePairsTemp)) {
+            relatedDistInds[i] <- distdex(indsToRow[diseasePairsTemp[i,1]],indsToRow[diseasePairsTemp[i,2]],length(indsToRow))
         }
+
+        excludeFromRandomInds <- c(excludeFromRandomInds,relatedDistInds)
+        
+        # Save results for the related pairs
+        relatedVec <- as.vector(allMetric[relatedDistInds])
+        relatedVecComb <- c(relatedVecComb,relatedVec)
+
+        resList[[paste0("summaryRelated_",pair)]] <- c(summary(relatedVec),"SD." = sd(relatedVec), "n" = length(relatedVec))
+
+        resList[[paste0("related_",pair)]] <- relatedVec
+
     }
 
-    randSampl <- function(x,p, diseasePairsConcat) {
-        if(runif(1) < p) {
-            if(checkIfIsRelated(x,diseasePairsConcat)) {
-                return(c(NA,NA))
-            } else {
-                return(x)
-            }
-        } else {
-            return(c(NA,NA))
-        }
-    }
+    ## Sample random distances from allMetric 
+    excludeFromRandomInds <- unique(excludeFromRandomInds)
+    randomVec <- sample(as.vector(allMetric)[-excludeFromRandomInds],length(excludeFromRandomInds)*randomSetSize)
 
-    randomPairs <- combn(rownames(netPropScores),2,simplify = TRUE,randSampl,
-                                                                    p = proportionOfPossiblePairs,
-                                                                    diseasePairsConcat = diseasePairsConcat) %>%
-                        t() %>% 
-                        unique() %>%
-                        as.data.frame()
-
-
-    randomPairs <- randomPairs[complete.cases(randomPairs),]
-
-    randomVec <- rep(NA,nrow(randomPairs))
-
-    for(i in 1:nrow(randomPairs)) {
-        randomVec[i] <- as.vector(distFunc(netPropScores[unlist(randomPairs[i,]),],distFuncSettings))
-    }
-
-    resList <- list()
-
-    # Compute the mean and sd of the distances for the disease pairs and the random pairs
-    resList[["summaryRelated"]] <- c(summary(relatedVec),"SD." = sd(relatedVec), "n" = length(relatedVec))
+    # Save results for the random pairs
     resList[["summaryRandom"]] <- c(summary(randomVec),"SD." = sd(randomVec), "n" = length(randomVec))
-    resList[["ratios"]] <- c("mean" = mean(relatedVec)/mean(randomVec), "sd" = sd(relatedVec)/sd(randomVec), "median" = median(relatedVec)/median(randomVec))
 
-
-    # Compute the auroc for the related and random pairs
-    resList[["AUROC"]] <- as.numeric(pROC::roc(response = c(rep(1,length(relatedVec)),
-                                                 rep(0,length(randomVec))),
-                                                 predictor = c(relatedVec,randomVec), quiet = TRUE)$auc)
-    
-    # Compute the Jensen Shanonn divergence between the related and random pairs
-
-    ## Estimate the probability density function of the related and random pairs
-    ### First estimate the density of the related and random pairs together
-    densityEst <- density(c(relatedVec,randomVec),na.rm = TRUE)
-
-    ### Then estimate the density of the related and random pairs separately using the same x values and bandwidths 
-    densityEstRel <- density(relatedVec,na.rm = TRUE,from = min(densityEst$x),to = max(densityEst$x),bw = densityEst$bw)
+    # Estimate the density of the all related pairs and random pairs together
+    densityEst <- density(c(relatedVecComb,randomVec),na.rm = TRUE)
     densityEstRand <- density(randomVec,na.rm = TRUE,from = min(densityEst$x),to = max(densityEst$x),bw = densityEst$bw)
-
-    ### Compute the Jensen Shannon divergence and store the results
-    resList[["JSD"]] <- philentropy::JSD(rbind(densityEstRel$y,densityEstRand$y))
-
-    ### Store the density estimates and histograms of the related and random pairs
-    resList[["densityEstRel"]] <- densityEstRel
     resList[["densityEstRand"]] <- densityEstRand
-    resList[["histRel"]] <- hist(relatedVec,plot=FALSE)
-    resList[["histRand"]] <- hist(randomVec,plot=FALSE)
+
+    for(pair in names(diseasePairs)) {
+        relatedVec <- resList[[paste0("related_",pair)]]
+        resList[[paste0("ratios_",pair)]] <- c("mean" = mean(relatedVec)/mean(randomVec), "sd" = sd(relatedVec)/sd(randomVec), "median" = median(relatedVec)/median(randomVec))
+            # Compute the auroc for the related and random pairs
+        resList[[paste0("AUROC_",pair)]] <- as.numeric(pROC::roc(response = c(rep(1,length(relatedVec)),
+                                                    rep(0,length(randomVec))),
+                                                    predictor = c(relatedVec,randomVec), quiet = TRUE)$auc)
+
+        # Estimate the density of the related and random pairs separately using the same x values and bandwidths 
+        densityEstRel <- density(relatedVec,na.rm = TRUE,from = min(densityEst$x),to = max(densityEst$x),bw = densityEst$bw)
+
+        # Compute the Jensen Shannon divergence and store the results
+        resList[[paste0("JSD_",pair)]] <- philentropy::JSD(rbind(densityEstRel$y,densityEstRand$y))
+
+        resList[[paste0("densityEstRel_",pair)]] <- densityEstRel
+
+    }
 
 
-    if(compareALL) {
-        allMetric <- distFunc(netPropScores,distFuncSettings)
+    ##########################################################
+    ######## CLUSTERING AND DIMENSIONALITY REDUCTION #########
+    ##########################################################
 
-        if(returnDist) {
-            resList[["Rawdist"]] <- allMetric
+    # Set the preferred number of clusters to the square root of the number of diseases
+    preferredClusterNumber <- round(sqrt(nrow(netPropScores))*1.5) 
+    kparam <- round(sqrt(nrow(netPropScores)))
+
+    # Check if the distFunc gave back disance matrix and convert it if not (for downstream tasks) 
+    if(!("returnDist" %in% names(distFuncSettings))) {
+        # Convert the similarity matrix to a distance matrix
+        print("Converting similarity matrix to distance matrix")
+        print("Stats before conversion:")
+        print(summary(allMetric))
+        allMetric <- proxy::as.dist(allMetric) # assumes that the input is a similarity matrix
+        print("Stats after conversion:")
+        print(summary(allMetric))
+
+    }
+
+    if(any(allMetric <  1e-10)) {
+        print("Atleast one distance is 0, setting to the smallest non zero distance")
+        allMetric[allMetric < 1e-10] <- 1e-10 # I dont know what value will make isoMDS not fail
+        print(summary(allMetric))
+
+    }
+
+
+    # Compute the correlation between the disease shortest paths and the distance matrix
+    if(!is.null(diseaseShortestPaths)) {
+
+        sharedDiseases <- base::intersect(rownames(netPropScores), attr(diseaseShortestPaths,"Labels"))
+
+        # Convert to matrices and reconvert to dists (this is dumb)
+        distForCorr <- as.dist(as.matrix(allMetric)[sharedDiseases,sharedDiseases])
+        shortPathForCorr <- as.dist(as.matrix(allMetric)[sharedDiseases,sharedDiseases])
+
+        resList[["DistGraphPCC"]] <- cor(distForCorr,shortPathForCorr, method = "pearson")
+        reresList[["DistGraphSCC"]] <- cor(distForCorr,shortPathForCorr, method = "spearman")
+
+    }
+
+    #str(as.dist(as.matrix(dist(t(iris[,1:4])))[colnames(iris)[1:2],colnames(iris)[1:2]]))
+
+    # Compute low dim embeddings
+    resList[["cMDS"]] <- cmdscale(allMetric,k = 2)
+    resList[["isoMDS"]] <- MASS::isoMDS(allMetric,k = 2)$points
+    resList[["UMAP"]] <- umap::umap(as.matrix(allMetric),input = "dist")$layout	
+
+    resList[["HClust"]] <- hclust(allMetric)
+    resList[["HClustKcut"]] <- cutree(resList[["HClust"]],k = preferredClusterNumber)
+
+    # Run dynamic tree cut with various minClusterSize and take the one with the number of clusters closest to preferredClusterNumber
+    #resList[["HClustDTC"]] <- dynamicTreeCut::cutreeDynamic(resList[["HClust"]],minClusterSize = 5)
+
+    DTClist <- list()
+    nclust <- c()
+    index <- 1
+    for(minClusterSize in seq(4,20,1)) {
+        DTClist[[as.character(minClusterSize)]] <- dynamicTreeCut::cutreeDynamic(resList[["HClust"]],minClusterSize = minClusterSize)
+        nclust[index] <- length(unique(DTClist[[as.character(minClusterSize)]]))
+        index <- index + 1
+    }
+    bestMinClusterSize <- as.character(seq(4,20,1)[which.min(abs(nclust - preferredClusterNumber))])
+    resList[["HClustDTC"]] <- DTClist[[bestMinClusterSize]]
+
+
+    # Run leiden with different resolutions and take the one with the number of clusters closest to preferredClusterNumber
+    leidList <- list()
+    nclust <- c()
+    index <- 1
+    snnGraph <- dbscan::sNN(allMetric,k = kparam,kt=kparam/3) %>%
+                                    dbscan::adjacencylist() %>%
+                                    igraph::graph_from_adj_list() %>%
+                                    igraph::as.undirected() %>% # Add edge weights to the graph from similarity matrix
+                                    igraph::simplify()
+    
+
+    # Add edge weights to the graph from similarity matrix
+    #E(snnGraph)$weight <- as.matrix(proxy::as.simil(allMetric))[igraph::get.edgelist(snnGraph)]
+
+
+    for(res in seq(0.01,2.01,0.05)) {
+        leidList[[as.character(res)]] <- snnGraph %>%
+                                igraph::cluster_leiden(resolution_parameter = res,n_iterations = 13) %>%
+                                igraph::membership() 
+                                
+        nclust[index] <- length(unique(leidList[[as.character(res)]]))
+        index <- index + 1
         }
-
-        allMetricVec <- as.vector(allMetric)
-        resList[["summaryAll"]] <- c(summary(allMetricVec),"SD." = sd(allMetricVec))
-        resList[["DensityAll"]] <- density(allMetricVec,na.rm = TRUE)
-        resList[["HistAll"]] <- hist(allMetricVec,plot=FALSE)
-        rm(allMetricVec)
+    
+    bestResLeiden <- as.character(seq(0.01,1.01,0.05)[which.min(abs(nclust - preferredClusterNumber))])
+    resList[["Leiden"]] <- leidList[[bestResLeiden]]
 
 
-        # Set the preferred number of clusters to the square root of the number of diseases
-        preferredClusterNumber <- round(sqrt(nrow(netPropScores))*1.5) 
-        kparam <- round(sqrt(nrow(netPropScores)))
+    # Create plots of the 
 
-        # Check if the distFunc gave back disance matrix and convert it if not (for downstream tasks) 
-        if(!("returnDist" %in% names(distFuncSettings))) {
-            # Convert the similarity matrix to a distance matrix
-            print("Converting similarity matrix to distance matrix")
-            print("Stats before conversion:")
-            print(summary(allMetric))
-            allMetric <- proxy::as.dist(allMetric) # assumes that the input is a similarity matrix
-            print("Stats after conversion:")
-            print(summary(allMetric))
+    
+    coords <- c("cMDS","isoMDS","UMAP")
+    clustAlgos <- c("HClustKcut","Leiden","HClustDTC")
 
-        }
+    for(clustAlgo in clustAlgos){
 
-        if(any(allMetric <  1e-10)) {
-            print("Atleast one distance is 0, setting to the smallest non zero distance")
-            allMetric[allMetric < 1e-10] <- 1e-10 # I dont know what value will make isoMDS not fail
-            print(summary(allMetric))
+        # Get the frequent ancestors of the diseases in each cluster
+        resList[[paste0("commonAncestors_",clustAlgo)]] <- getCommonClusterAncestors(diseasesDataFrame,
+                                                                    resList[[clustAlgo]],
+                                                                    rownames(netPropScores))
 
-        }
-
-
-        # Compute the correlation between the disease shortest paths and the distance matrix
-        if(!is.null(diseaseShortestPaths)) {
-
-            sharedDiseases <- base::intersect(rownames(netPropScores), attr(diseaseShortestPaths,"Labels"))
-
-            # Convert to matrices and reconvert to dists (this is dumb)
-            distForCorr <- as.dist(as.matrix(allMetric)[sharedDiseases,sharedDiseases])
-            shortPathForCorr <- as.dist(as.matrix(allMetric)[sharedDiseases,sharedDiseases])
-
-            resList[["DistGraphPCC"]] <- cor(distForCorr,shortPathForCorr, method = "pearson")
-            reresList[["DistGraphSCC"]] <- cor(distForCorr,shortPathForCorr, method = "spearman")
-
-        }
-
-        #str(as.dist(as.matrix(dist(t(iris[,1:4])))[colnames(iris)[1:2],colnames(iris)[1:2]]))
-
-        # Compute low dim embeddings
-        resList[["cMDS"]] <- cmdscale(allMetric,k = 2)
-        resList[["isoMDS"]] <- MASS::isoMDS(allMetric,k = 2)$points
-        resList[["UMAP"]] <- umap::umap(as.matrix(allMetric),input = "dist")$layout	
-
-        resList[["HClust"]] <- hclust(allMetric)
-        resList[["HClustKcut"]] <- cutree(resList[["HClust"]],k = preferredClusterNumber)
-
-        # Run dynamic tree cut with various minClusterSize and take the one with the number of clusters closest to preferredClusterNumber
-        #resList[["HClustDTC"]] <- dynamicTreeCut::cutreeDynamic(resList[["HClust"]],minClusterSize = 5)
-
-        DTClist <- list()
-        nclust <- c()
-        index <- 1
-        for(minClusterSize in seq(4,20,1)) {
-            DTClist[[as.character(minClusterSize)]] <- dynamicTreeCut::cutreeDynamic(resList[["HClust"]],minClusterSize = minClusterSize)
-            nclust[index] <- length(unique(DTClist[[as.character(minClusterSize)]]))
-            index <- index + 1
-        }
-        bestMinClusterSize <- as.character(seq(4,20,1)[which.min(abs(nclust - preferredClusterNumber))])
-        resList[["HClustDTC"]] <- DTClist[[bestMinClusterSize]]
+        # Create a legend plot that shows the colors of the clusters and the frequent ancestors of the diseases in each cluster
+        ## Create dataframe with cluster number and concatenated ancestors
+        legendDF <- data.frame("Clusters" = min(resList[[clustAlgo]]):max(resList[[clustAlgo]]),
+                                "Ancestors" = sapply(resList[[paste0("commonAncestors_",clustAlgo)]],
+                                                                function(x) paste(names(x[1:min(7,length(x))]),collapse = ", ")),
+                                "Counts" = as.vector(table(resList[[clustAlgo]])),
+                                "Entropy" = sapply(resList[[paste0("commonAncestors_",clustAlgo)]],
+                                                    function(x) DescTools::Entropy(x)/log2(length(x)))
+                                            )
 
 
-        # Run leiden with different resolutions and take the one with the number of clusters closest to preferredClusterNumber
-        leidList <- list()
-        nclust <- c()
-        index <- 1
-        snnGraph <- dbscan::sNN(allMetric,k = kparam,kt=kparam/3) %>%
-                                        dbscan::adjacencylist() %>%
-                                        igraph::graph_from_adj_list() %>%
-                                        igraph::as.undirected() %>% # Add edge weights to the graph from similarity matrix
-                                        igraph::simplify()
-        
-
-        # Add edge weights to the graph from similarity matrix
-        #E(snnGraph)$weight <- as.matrix(proxy::as.simil(allMetric))[igraph::get.edgelist(snnGraph)]
+        legendDF <- legendDF[order(legendDF$Counts,decreasing = TRUE),]
+        legendDF$yCoord <- 1:nrow(legendDF)
+        legendDF$LineYs <- legendDF$yCoord + 0.5
 
 
-        for(res in seq(0.01,2.01,0.05)) {
-            leidList[[as.character(res)]] <- snnGraph %>%
-                                    igraph::cluster_leiden(resolution_parameter = res,n_iterations = 13) %>%
-                                    igraph::membership() 
-                                    
-            nclust[index] <- length(unique(leidList[[as.character(res)]]))
-            index <- index + 1
-            }
-        
-        bestResLeiden <- as.character(seq(0.01,1.01,0.05)[which.min(abs(nclust - preferredClusterNumber))])
-        resList[["Leiden"]] <- leidList[[bestResLeiden]]
+        # Add a \n to the ancestors strings if the nchar exceeds 60. Add only one \n to the string at the first comma after 60 characters
+        legendDF$Ancestors <- gsub("(.{100},)","\\1\n",legendDF$Ancestors)
 
+        sortClustLabs <- names(sort(table(resList[[clustAlgo]]),decreasing = TRUE))
 
-        # Create plots of the 
+        resList[[paste0("legendDF_",clustAlgo)]] <- legendDF
+    
 
-        
-        coords <- c("cMDS","isoMDS","UMAP")
-        clustAlgos <- c("HClustKcut","Leiden","HClustDTC")
+        for(coord in coords) {
+            coordDF <- as.data.frame(resList[[coord]]) 
+            colnames(coordDF) <- c("Dim1","Dim2")
+            rownames(coordDF) <- rownames(netPropScores)
+            pairDF <- createPairDF(coordDF,diseasePairs)
+            coordDF$Cluster <- factor(resList[[clustAlgo]],levels = sortClustLabs)
 
-    	for(clustAlgo in clustAlgos){
+            resList[[paste0("coorDF_",clustAlgo,"_",coord)]] <- coordDF
+            resList[[paste0("pairDF_",clustAlgo,"_",coord)]] <- pairDF
 
-            # Get the frequent ancestors of the diseases in each cluster
-            resList[[paste0("commonAncestors_",clustAlgo)]] <- getCommonClusterAncestors(diseasesDataFrame,
-                                                                        resList[[clustAlgo]],
-                                                                        rownames(netPropScores))
-
-            # Create a legend plot that shows the colors of the clusters and the frequent ancestors of the diseases in each cluster
-            ## Create dataframe with cluster number and concatenated ancestors
-            legendDF <- data.frame("Clusters" = min(resList[[clustAlgo]]):max(resList[[clustAlgo]]),
-                                    "Ancestors" = sapply(resList[[paste0("commonAncestors_",clustAlgo)]],
-                                                                    function(x) paste(names(x[1:min(7,length(x))]),collapse = ", ")),
-                                    "Counts" = as.vector(table(resList[[clustAlgo]])),
-                                    "Entropy" = sapply(resList[[paste0("commonAncestors_",clustAlgo)]],
-                                                        function(x) DescTools::Entropy(x)/log2(length(x)))
-                                                )
-
-
-            legendDF <- legendDF[order(legendDF$Counts,decreasing = TRUE),]
-            legendDF$yCoord <- 1:nrow(legendDF)
-            legendDF$LineYs <- legendDF$yCoord + 0.5
-
-
-            # Add a \n to the ancestors strings if the nchar exceeds 60. Add only one \n to the string at the first comma after 60 characters
-            legendDF$Ancestors <- gsub("(.{100},)","\\1\n",legendDF$Ancestors)
-
-            sortClustLabs <- names(sort(table(resList[[clustAlgo]]),decreasing = TRUE))
-
-            resList[[paste0("legendDF_",clustAlgo)]] <- legendDF
-        
-
-            for(coord in coords) {
-                coordDF <- as.data.frame(resList[[coord]]) 
-                colnames(coordDF) <- c("Dim1","Dim2")
-                rownames(coordDF) <- rownames(netPropScores)
-                pairDF <- createPairDF(coordDF,diseasePairs)
-                coordDF$Cluster <- factor(resList[[clustAlgo]],levels = sortClustLabs)
-
-                resList[[paste0("coorDF_",clustAlgo,"_",coord)]] <- coordDF
-                resList[[paste0("pairDF_",clustAlgo,"_",coord)]] <- pairDF
-
-            }
         }
     }
-    
+
+    # Remove any occurences of "__" in the names of the items in resList
+    names(resList) <- gsub("__","",names(resList))
 
 
     return(resList)	
@@ -705,6 +690,11 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
 # Function that takes in a matrix coordinates and a list of pairs of rows and returns a dataframe where each row contains the coordinates of the two rows in the pair
 
 createPairDF <- function(coords,pairs) {
+    # Combine pairs list into a single dataframe and remove any duplicated rows and rows that contain ids that are not in the coords dataframe
+    pairs <- do.call(rbind,pairs) %>%
+                distinct() %>%
+                filter(.[[1]] %in% rownames(coords) & .[[2]] %in% rownames(coords))
+
     resDF <- data.frame(matrix(NA,nrow = nrow(pairs),ncol = ncol(coords)*2))
     for(i in 1:nrow(pairs)) {
         resDF[i,] <- unlist(c(coords[pairs[i,1],],coords[pairs[i,2],]))
@@ -748,7 +738,12 @@ computeDistance <- function(matrix, distFuncSettings) {
         }
     } else if (method == "jsd") {
         # Jenson shannon distance (not divergence!)
-        return(sqrt(as.distance(philentropy::JSD(matrix))))
+        if(nrow(matrix) == 2) {
+            val <- unname(philentropy::JSD(matrix))
+            return(sqrt(as.dist(matrix(c(0,val,val,0),nrow = 2))))
+        } else {
+            return(sqrt(as.dist(philentropy::JSD(matrix))))
+        }
     # Just the default distance function in R with p serving as the minkowski dist parameter
     } else {
         if ("p" %in% names(distFuncSettings)) {
@@ -840,6 +835,10 @@ generatePlotsFromDistCompareResults <- function(resList,diseaseMapping = NULL, d
 # It returns the top n most common ancestry terms of all the diseases in each cluster
 
 getCommonClusterAncestors <- function(diseases,clusterMembership,diseaseNames) {
+
+    if(any(stringr::str_detect(diseaseNames,"-"))) {
+        diseaseNames <- sapply(diseaseNames,function(x) strsplit(x,"-")[[1]][1])
+    }
 
     # Create a list that will hold the results
     resList <- list()

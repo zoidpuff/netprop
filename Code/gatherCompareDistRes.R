@@ -12,7 +12,7 @@ insertIntoNestedList <- function(lst, keys, value) {
 }
 
 # Folder path containing the .rdata files
-folderPath <- "/home/gummi/netprop/compareDistDamping"
+folderPath <- "/home/gummi/netprop/results/RareAndMouse"
 
 # Initialize the master list
 masterRes <- list()
@@ -23,6 +23,7 @@ files <- list.files(path = folderPath, pattern = "\\.rdata$", full.names = TRUE)
 # Iterate over the files and load the 'res' object into the master list
 for (file in files) {
   # Load the .rdata file
+  print(file)
   load(file)
   
   # Extract the filename without extension and split by '_'
@@ -37,7 +38,7 @@ for (file in files) {
   masterRes <- insertIntoNestedList(masterRes, keys, res)
 }
 
-save(masterRes, file = "masterResDamping.rdata")
+save(masterRes, file = "masterResMouseRareGWAS.rdata")
 
 # At this point, masterRes is structured as per your filename components
 # To access an element, use something like:
