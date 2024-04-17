@@ -570,6 +570,12 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
         # Convert to matrices and reconvert to dists (this is dumb)
         distForCorr <- as.dist(as.matrix(allMetric)[sharedDiseases,sharedDiseases])
         shortPathForCorr <- as.dist(as.matrix(diseaseShortestPaths)[sharedDiseases,sharedDiseases])
+        
+        # Function for going from matrix row and column names to 1d dist object indices
+        distdexNames <- function(i,j,distObj) {
+            labels <- attr(distObj,"Labels")
+            return(distdex(which(labels == i),which(labels == j),length(labels)))
+        }
 
         resList[["DistGraphPCC"]] <- cor(distForCorr,shortPathForCorr, method = "pearson")
         resList[["DistGraphSCC"]] <- cor(distForCorr,shortPathForCorr, method = "spearman")

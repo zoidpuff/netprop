@@ -8,7 +8,7 @@ library(doParallel)
 library(foreach)
 
 # Register the parallel backend
-no_cores <- min(18, detectCores())
+no_cores <- min(10, detectCores())
 cl <- makeCluster(no_cores)
 
 registerDoParallel(cl)
@@ -87,6 +87,14 @@ preprocessList <- list(c("0","FALSE","FALSE"),
                         c("0","TRUE","FALSE"))
 
 
+
+# Set the vars for testing
+#dataset <- names(assocDataList)[2]
+#NORMFUNC <- normList[[1]]
+#PREPROCESS <- preprocessList[[1]]
+#distanceMetric <- names(distanceMetricList)[9]
+
+
 # Run the experiments in foreach loop
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
@@ -94,12 +102,12 @@ for(dataset in names(assocDataList)){
             print(paste0("Started dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]]))
 
             netPropDataFrame <- runNetProp(network = intGraph,
-                                assocData = assocDataList[[dataset]],
-                                cutoff = c("value" = 0.2, "number" = 5),
-                                binarize = TRUE,
-                                damping = 0.85,
-                                NormFunc = NORMFUNC[[1]],
-                                settingsForNormFunc = NORMFUNC[[2]])
+                    assocData = assocDataList[[dataset]],
+                    cutoff = c("value" = 0.5, "number" = 5),
+                    binarize = TRUE,
+                    damping = 0.85,
+                    NormFunc = NORMFUNC[[1]],
+                    settingsForNormFunc = NORMFUNC[[2]])
 
             print(paste0("Length of netpropDataFrame: ", nrow(netPropDataFrame)))
             
@@ -109,9 +117,12 @@ for(dataset in names(assocDataList)){
             temp <- foreach(PREPROCESS = preprocessList,.combine = list) %:%
                         foreach(distanceMetric = names(distanceMetricList), .combine = list, .packages = c('dplyr',"ggplot2"),.errorhandling = "remove") %dopar% {
                             # Preprocess the netprop data
+                              
                             netPropDataFramePP <- preprocessNetPropDF(netPropDataFrame, as.numeric(PREPROCESS[1]), 
                                                                                         as.logical(PREPROCESS[2]), 
                                                                                         as.logical(PREPROCESS[3]))
+                            
+                            if(any(0>as.matrix(netPropDataFramePP))){return(NULL)}
 
                         #for(distanceMetric in names(distanceMetricList)){
                             cat(file="internalStarted.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	

@@ -1,0 +1,60 @@
+---
+title: "Untitled"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+netPropPath <- '/home/gummi/netprop'
+library(igraph)
+library(dplyr)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+if(file.exists(paste0(netPropPath,"/data/intGraph.rdata"))){
+    load(paste0(netPropPath,"/data/intGraph.rdata"))
+} 
+
+```
+
+```{r }
+seedVector <- rep(1, vcount(intGraph))
+
+ECvec <- igraph::page_rank(intGraph, directed = FALSE, damping = 1, personalized = seedVector,algo="arpack")
+
+```
+
+```{r }
+
+# Compute average network propagation vector by using random seeds and compare the distance to the EC vector for every iteration 
+
+nIter <- 1000
+
+avgVec <- rep(1/vcount(intGraph), vcount(intGraph))
+
+distanceVec <- rep(0, nIter)
+
+for(i in 1:nIter){
+    seedVector <- rep(0, vcount(intGraph))
+    seedVector[sample(1:vcount(intGraph), abs(ceiling(rnorm(1,150,50))))] <- 1	
+    
+    tempVec <- igraph::page_rank(intGraph, directed = FALSE, personalized = seedVector)$vector 
+
+    # Update the average vector
+    avgVec <- avgVec + (tempVec - avgVec)/i
+
+    # Compute the distance between the EC vector and the average vector
+    distanceVec[i] <- as.numeric(dist(rbind(avgVec, ECvec$vector), method = "euclidean"))
+    print(distanceVec[i])
+
+}
+
+
+```
+
+```{r }
+avg <- 0
+vals <- sample(1:100)
+for(i in 1:100) {
+    avg <- avg + (vals[i] - avg)/i
+    print(avg)
+}
+
+```
