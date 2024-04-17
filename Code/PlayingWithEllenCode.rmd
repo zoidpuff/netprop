@@ -121,8 +121,8 @@ write.csv(mouseTest, './data/mousePhenotypesUnnested.csv')
 
 ```{r }
 
-#diseasePath <- '/home/gummi/netprop/data/diseases/'
-diseasePath <- '/home/gummi/netprop/data/diseaseToPhenotype/'
+diseasePath <- '/home/gummi/netprop/data/newRawData/diseases/'
+#diseasePath <- '/home/gummi/netprop/data/diseaseToPhenotype/'
 
 disease <- spark_read_parquet(sc,
                                   path = diseasePath)
@@ -131,8 +131,8 @@ diseaseDF <- collect(disease)
 
 head(diseaseDF)
 
+save(diseaseDF, file = "./data/diseasesNew.rdata")
 
-t <- stringr::str_split(assocData$diseaseId, pattern = "_", simplify = TRUE)[,1]
 ```
 
 

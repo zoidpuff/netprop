@@ -120,7 +120,13 @@ mergedData <- read.csv(paste0(netPropPath,"/data/newData/associationByDatasource
 # eva_somatic & score > 0.6
 # gene2phenotype & score > 0.75
 
-summary(mergedData$score[mergedData$datasourceId == "gene2phenotype"])
+tooGeneric <- c("EFO_0000508", "EFO_0001444", "OTAR_0000018", "EFO_0004747",
+                "EFO_0004503", "EFO_0000651", "HP_0000118", "EFO_0004529",
+                "EFO_0005278", "EFO_0007937", "EFO_0004303", "Orphanet_71859",
+                "EFO_0006843", "Orphanet_183530", "GO_0008150", "EFO_0005105",
+                "EFO_0004298", "EFO_0000719", "HP_0100543", "EFO_0004311" , "EFO_0004530",
+                "EFO_0000246", "EFO_0004557", "MONDO_0000429", "MONDO_0019755",
+                "EFO_1000017" )
 
 mergedDataFiltered <- mergedData %>%
     filter((datasourceId == "eva" & score > 0.5) |
@@ -142,8 +148,14 @@ mergedDataFilteredMerged <- mergedDataFiltered %>%
 
 mergedDataFilteredMerged$diseaseName <- idToName[mergedDataFilteredMerged$diseaseId]
 
+mergedDataFilteredMerged <- mergedDataFilteredMerged %>% filter(!(diseaseId %in% tooGeneric))
+
 write.csv(mergedDataFilteredMerged, paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered.csv"), row.names = FALSE)
 
+
+
+# Compute the number of associations for each disease in the merged dataset
+#mergedDataFilteredMerged %>% group_by(diseaseId) %>% summarise(count = n()) %>% arrange(desc(count)) %>% mutate(name = idToName[diseaseId]) %>% View()
 
 # Do the same thing but with direct data only	
 
@@ -165,6 +177,8 @@ directDataFilteredMerged <- directDataFiltered %>%
             distinct()
 
 directDataFilteredMerged$diseaseName <- idToName[directDataFilteredMerged$diseaseId]
+
+directDataFilteredMerged <- directDataFilteredMerged %>% filter(!(diseaseId %in% tooGeneric))
 
 write.csv(directDataFilteredMerged, paste0(netPropPath,"/data/associationByDatasourceDirectFiltered.csv"), row.names = FALSE)
 

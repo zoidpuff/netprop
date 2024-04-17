@@ -569,10 +569,10 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
 
         # Convert to matrices and reconvert to dists (this is dumb)
         distForCorr <- as.dist(as.matrix(allMetric)[sharedDiseases,sharedDiseases])
-        shortPathForCorr <- as.dist(as.matrix(allMetric)[sharedDiseases,sharedDiseases])
+        shortPathForCorr <- as.dist(as.matrix(diseaseShortestPaths)[sharedDiseases,sharedDiseases])
 
         resList[["DistGraphPCC"]] <- cor(distForCorr,shortPathForCorr, method = "pearson")
-        reresList[["DistGraphSCC"]] <- cor(distForCorr,shortPathForCorr, method = "spearman")
+        resList[["DistGraphSCC"]] <- cor(distForCorr,shortPathForCorr, method = "spearman")
 
     }
 
@@ -692,6 +692,7 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
 createPairDF <- function(coords,pairs) {
     # Combine pairs list into a single dataframe and remove any duplicated rows and rows that contain ids that are not in the coords dataframe
     pairs <- do.call(rbind,pairs) %>%
+                as.data.frame() %>%
                 distinct() %>%
                 filter(.[[1]] %in% rownames(coords) & .[[2]] %in% rownames(coords))
 

@@ -31,16 +31,24 @@ intGraph <- simplify(intGraph, remove.multiple = TRUE, remove.loops = TRUE)
 
 # remove orphan nodes
 
-intGraph <- delete.vertices(intGraph, which(degree(intGraph) == 0))
+intGraph <- delete_vertices(intGraph, which(degree(intGraph) == 0))
 
 
 ########### LOAD ASSOCIATION DATA ###########
 
+load("/home/gummi/netprop/data/shortestPATHSDiseases.RData")
+
+
 assocDataBySourceDirectFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirectFiltered.csv"), stringsAsFactors = FALSE)
 assocDataBySourceDirIndiMergedFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered.csv"), stringsAsFactors = FALSE)
 
+allPossibleDiseases <- unique(c(assocDataBySourceDirectFiltered$diseaseId,assocDataBySourceDirIndiMergedFiltered$diseaseId))
+intersectionOfDisease <- intersect(allPossibleDiseases,attr(shortestPATHS,"Labels"))
+shortestPATHS <- as.dist(as.matrix(shortestPATHS)[intersectionOfDisease,intersectionOfDisease])
+
+
 # loads diseaseDF object
-load(paste0(netPropPath,"/data/diseases.rdata"))
+load(paste0(netPropPath,"/data/diseasesNew.rdata"))
 
 relationshipsAll <- read.csv(paste0(netPropPath,"/relationshipsWithNames.csv"), stringsAsFactors = FALSE)
 
@@ -79,7 +87,6 @@ preprocessList <- list(c("0","FALSE","FALSE"),
                         c("0","TRUE","FALSE"))
 
 
-
 # Run the experiments in foreach loop
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
@@ -88,7 +95,7 @@ for(dataset in names(assocDataList)){
 
             netPropDataFrame <- runNetProp(network = intGraph,
                                 assocData = assocDataList[[dataset]],
-                                cutoff = c("value" = 0.2, "number" = 1),
+                                cutoff = c("value" = 0.2, "number" = 5),
                                 binarize = TRUE,
                                 damping = 0.85,
                                 NormFunc = NORMFUNC[[1]],
@@ -114,7 +121,10 @@ for(dataset in names(assocDataList)){
                                     relationships,
                                     8,
                                     TRUE,
-                                    diseaseDF)
+                                    diseaseDF,
+                                    FALSE,
+                                    shortestPATHS)
+
                                     save(res, file = paste0(netPropPath,
                                         "/results/compareDist/netpropDistanceMetricCompare_",
                                         dataset,"_",
