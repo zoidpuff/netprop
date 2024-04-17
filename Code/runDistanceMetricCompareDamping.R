@@ -90,8 +90,6 @@ dampings <- as.character(seq(0.02,0.98,by = 0.02))
 
 
 # Run the experiments in foreach loop
-
-
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
         temp <- foreach(dampingFactor = dampings, .combine = list, .packages = c('dplyr',"ggplot2"),.errorhandling = "remove") %dopar% {
@@ -102,6 +100,7 @@ for(dataset in names(assocDataList)){
                                 damping = as.numeric(dampingFactor),
                                 NormFunc = NORMFUNC[[1]],
                                 settingsForNormFunc = NORMFUNC[[2]])
+                                
             relationships <- relationshipsAll %>% filter(term1 %in% rownames(netPropDataFrame) & term2 %in% rownames(netPropDataFrame))
             relationships <- as.matrix(relationships[,c("term1","term2")])
             for(distanceMetric in names(distanceMetricList)){

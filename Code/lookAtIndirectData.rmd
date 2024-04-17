@@ -1,0 +1,171 @@
+---
+title: "Untitled"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+
+```{r load funcs}
+
+netPropPath <- '/home/gummi/netprop'
+
+library(igraph)
+library(dplyr)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+
+
+```
+
+
+```{r load data}
+
+
+# Load the data
+assocDataBySourceDirect <- read.csv(paste0(netPropPath,"/data/newData/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE)
+assocDataBySourceIndirect <- read.csv(paste0(netPropPath,"/data/newData/associationByDatasourceIndirect.csv"), stringsAsFactors = FALSE)
+
+# Remove the first column from both dataframes
+assocDataBySourceDirect <- assocDataBySourceDirect[,-1]
+assocDataBySourceIndirect <- assocDataBySourceIndirect[,-1]
+
+# diseaseDF
+load(paste0(netPropPath,"/data/diseases.rdata"))
+idToName <- setNames(diseaseDF$name, diseaseDF$id)
+
+```
+
+
+```{r some facts}
+
+
+dimSizeDirectTotal <- dim(assocDataBySourceDirect)
+dimSizeIndirectTotal <- dim(assocDataBySourceIndirect)
+
+dimSizeDirectTotal
+dimSizeIndirectTotal
+
+dimSizeDirectTotal/dimSizeIndirectTotal
+
+# Check the relative size of the data sources
+data.frame("Direct" = as.vector(unname(table(assocDataBySourceDirect$datasourceId))),
+                "Indirect" = as.vector(unname(table(assocDataBySourceIndirect$datasourceId))),
+                "Ratio" = as.vector(unname(table(assocDataBySourceDirect$datasourceId))/unname(table(assocDataBySourceIndirect$datasourceId))),
+                row.names = names(table(assocDataBySourceDirect$datasourceId)))
+
+# Check if the if all the associations in direct are also in indirect
+
+# Dumb way, merge and distinct
+mergedDistinct <- rbind(assocDataBySourceDirect, assocDataBySourceIndirect) %>% distinct() %>% dim()
+indirectDistinct <- assocDataBySourceIndirect %>% distinct() %>% dim()
+directDistinct <- assocDataBySourceDirect %>% distinct() %>% dim()
+
+mergedDistinct
+indirectDistinct
+directDistinct
+# There is overlap but its not 100%
+
+# This seems to indicate that the datsets are distince and the overlap is caused by descendant having same associations
+
+
+```
+
+```{r some facts2}
+
+# Filter for only diseaseId == "EFO_0005140"
+
+autoImmuneAssocsDirect <- assocDataBySourceDirect %>% filter(diseaseId == "EFO_0005140") %>% filter(datasourceId == "eva")
+
+autoImmuneAssocsIndirect <- assocDataBySourceIndirect %>% filter(diseaseId == "EFO_0005140") %>% filter(datasourceId == "eva")
+
+# Check if there are shared rows between the two
+sharedRows <- merge(autoImmuneAssocsDirect, autoImmuneAssocsIndirect, by = c("diseaseId", "targetId", "datasourceId","score"), all = FALSE)
+
+dim(sharedRows)
+
+View(rbind(autoImmuneAssocsDirect, autoImmuneAssocsIndirect))
+
+```
+
+
+```{r create merged dataset}
+
+mergedData <- rbind(assocDataBySourceDirect, assocDataBySourceIndirect) %>% 
+            select(diseaseId, targetId, datasourceId, score) %>%
+            group_by(diseaseId, targetId, datasourceId) %>% 
+            summarise(score = max(score)) %>%
+            ungroup() %>%
+            distinct()
+
+dim(mergedData)
+
+write.csv(mergedData, paste0(netPropPath,"/data/newData/associationByDatasourceMerged.csv"), row.names = FALSE)
+mergedData <- read.csv(paste0(netPropPath,"/data/newData/associationByDatasourceMerged.csv"), stringsAsFactors = FALSE)
+```
+
+
+
+```{r create a new combined dataset which is a combination of select datapoints from direct and indirect}
+
+# filter for 
+# eva & score > 0.5
+# ot_genetics_portal & score > 0.4
+# orphanet & score > 0.5
+# clingen & score > 0.5
+# gene_burden & score > 0.6
+# genomics_england & score > 0.6
+# eva_somatic & score > 0.6
+# gene2phenotype & score > 0.75
+
+summary(mergedData$score[mergedData$datasourceId == "gene2phenotype"])
+
+mergedDataFiltered <- mergedData %>%
+    filter((datasourceId == "eva" & score > 0.5) |
+           (datasourceId == "ot_genetics_portal" & score > 0.4) |
+           (datasourceId == "orphanet" & score > 0.5) |
+           (datasourceId == "clingen" & score > 0.5) |
+           (datasourceId == "gene_burden" & score > 0.6) |
+           (datasourceId == "genomics_england" & score > 0.6) |
+           (datasourceId == "eva_somatic" & score > 0.6) |
+           (datasourceId == "gene2phenotype" & score > 0.75))
+
+
+mergedDataFilteredMerged <- mergedDataFiltered %>% 
+            select(diseaseId, targetId, score) %>%
+            group_by(diseaseId, targetId) %>% 
+            summarise(score = max(score)) %>%
+            ungroup() %>%
+            distinct()
+
+mergedDataFilteredMerged$diseaseName <- idToName[mergedDataFilteredMerged$diseaseId]
+
+write.csv(mergedDataFilteredMerged, paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered.csv"), row.names = FALSE)
+
+
+# Do the same thing but with direct data only	
+
+directDataFiltered <- assocDataBySourceDirect %>%
+    filter((datasourceId == "eva" & score > 0.5) |
+           (datasourceId == "ot_genetics_portal" & score > 0.4) |
+           (datasourceId == "orphanet" & score > 0.5) |
+           (datasourceId == "clingen" & score > 0.5) |
+           (datasourceId == "gene_burden" & score > 0.6) |
+           (datasourceId == "genomics_england" & score > 0.6) |
+           (datasourceId == "eva_somatic" & score > 0.6) |
+           (datasourceId == "gene2phenotype" & score > 0.75))
+
+directDataFilteredMerged <- directDataFiltered %>% 
+            select(diseaseId, targetId, score) %>%
+            group_by(diseaseId, targetId) %>% 
+            summarise(score = max(score)) %>%
+            ungroup() %>%
+            distinct()
+
+directDataFilteredMerged$diseaseName <- idToName[directDataFilteredMerged$diseaseId]
+
+write.csv(directDataFilteredMerged, paste0(netPropPath,"/data/associationByDatasourceDirectFiltered.csv"), row.names = FALSE)
+
+```

@@ -36,41 +36,25 @@ intGraph <- delete.vertices(intGraph, which(degree(intGraph) == 0))
 
 ########### LOAD ASSOCIATION DATA ###########
 
-assocDataBySource <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE)
-assocDataOverall <-  read.csv(paste0(netPropPath,"/data/associationByOverallDirect.csv"), stringsAsFactors = FALSE)
+assocDataBySourceDirectFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirectFiltered.csv"), stringsAsFactors = FALSE)
+assocDataBySourceDirIndiMergedFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered.csv"), stringsAsFactors = FALSE)
 
 # loads diseaseDF object
-#load("/home/gummi/netprop/data/diseases.rdata")
 load(paste0(netPropPath,"/data/diseases.rdata"))
 
 relationshipsAll <- read.csv(paste0(netPropPath,"/relationshipsWithNames.csv"), stringsAsFactors = FALSE)
 
-
-########### Filter the association data ###########
-
-assocDataOverallEFO <-  assocDataOverall %>%
-                         filter(grepl("EFO",diseaseId))
-
-
-assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","clingen","eva","eva_somatic")) 
-
-assocDataRareDiseases <- assocDataRareDiseases[,c("score","diseaseId","targetId")] %>% 
-  group_by(targetId,diseaseId) %>% 
-  summarise(score = max(score)) %>%
-    ungroup()
-
-
 # Create a list of the association data
 
-assocDataList <- list("AllTraitsOverallScores" = assocDataOverall,
-                        "EFOTraitsOverallScores" = assocDataOverallEFO,
-                        "RareDiseasesOrphaEvaClingenScores" = assocDataRareDiseases)
-# Create a list of distance metrics
+assocDataList <- list("assocDataBySourceDirectFiltered" = assocDataBySourceDirectFiltered,
+                      "assocDataBySourceDirIndiMergedFiltered" = assocDataBySourceDirIndiMergedFiltered)
 
+# Create a list of distance metrics
 distanceMetricList <- list(
   "kendall" = list("method" = "kendall"),
   "euclidean" = list("method" = "euclidean","returnDist" = NA),
   "manhattan" = list("method" = "manhattan","returnDist" = NA),
+  "minkowski05" = list("method" = "minkowski","returnDist" = NA,"p" = 0.5),
   "cosine" = list("method" = "cosine"),
   "cosineSharp2" = list("method" = "cosine","p" = 2),
   "pearson" = list("method" = "pearson"),	
@@ -96,11 +80,7 @@ preprocessList <- list(c("0","FALSE","FALSE"),
 
 
 
-
 # Run the experiments in foreach loop
-
-
-
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
             # Run the netprop algorithm with the association data and the network
@@ -108,14 +88,13 @@ for(dataset in names(assocDataList)){
 
             netPropDataFrame <- runNetProp(network = intGraph,
                                 assocData = assocDataList[[dataset]],
-                                cutoff = c("value" = 0.5, "number" = 2),
+                                cutoff = c("value" = 0.2, "number" = 1),
                                 binarize = TRUE,
                                 damping = 0.85,
                                 NormFunc = NORMFUNC[[1]],
                                 settingsForNormFunc = NORMFUNC[[2]])
 
             print(paste0("Length of netpropDataFrame: ", nrow(netPropDataFrame)))
-            #netPropDataFrame[min(100,nrow(netPropDataFrame)),]
             
             relationships <- relationshipsAll %>% filter(term1 %in% rownames(netPropDataFrame) & term2 %in% rownames(netPropDataFrame))
             relationships <- as.matrix(relationships[,c("term1","term2")])
@@ -123,7 +102,6 @@ for(dataset in names(assocDataList)){
             temp <- foreach(PREPROCESS = preprocessList,.combine = list) %:%
                         foreach(distanceMetric = names(distanceMetricList), .combine = list, .packages = c('dplyr',"ggplot2"),.errorhandling = "remove") %dopar% {
                             # Preprocess the netprop data
-                            #print(paste0("Started dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_")))
                             netPropDataFramePP <- preprocessNetPropDF(netPropDataFrame, as.numeric(PREPROCESS[1]), 
                                                                                         as.logical(PREPROCESS[2]), 
                                                                                         as.logical(PREPROCESS[3]))

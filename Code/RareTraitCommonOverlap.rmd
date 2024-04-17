@@ -16,7 +16,8 @@ netPropPath <- '/home/gummi/netprop'
 library(igraph)
 library(dplyr)
 source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
-
+library(ggvenn)
+library(ggplot2)
 
 ```
 
@@ -25,8 +26,9 @@ source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
 
 
 # Load the data
-assocDataBySource <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE)
+#assocDataBySource <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE)
 
+assocDataBySource <- read.csv(paste0(netPropPath,"/data/newData/associationByDatasourceMerged.csv"), stringsAsFactors = FALSE)
 # diseaseDF
 load(paste0(netPropPath,"/data/diseases.rdata"))
 idToName <- setNames(diseaseDF$name, diseaseDF$id)
@@ -37,65 +39,99 @@ idToName <- setNames(diseaseDF$name, diseaseDF$id)
 ```{r get set of rare traits} 
 
 
-# Analyis for rare diseases????
-#assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","clingen","eva","eva_somatic")) 
+depmap <- data.table::fread("/home/gummi/netprop/data/CRISPRGeneDependency.csv",data.table = FALSE)
 
-#assocDataRareDiseasesCollapsed <- assocDataRareDiseases[,c("score","diseaseId","targetId")] %>% 
-#  group_by(targetId,diseaseId) %>% 
-#  summarise(score = max(score)) %>%
-#    ungroup() %>%
-#  filter(score > 0.5)	
-#
-#
-#rareDiseaseAssocsFromOTgenetics <- assocDataBySource %>% 
-#          filter(datasourceId == "ot_genetics_portal") %>%
-#          filter(score > 0.2)	%>%
-#          filter(diseaseId %in% unique(assocDataRareDiseasesCollapsed$diseaseId)) 
+rownames(depmap) <- depmap[,1]
+depmap <- depmap[,-1]
 
-#assocDataRareDiseasesCollapsed <- assocDataRareDiseasesCollapsed %>% 
-#              filter(diseaseId %in% unique(rareDiseaseAssocsFromOTgenetics$diseaseId))
+# Compute the column medians
+depmapMedians <- apply(depmap,2,median,na.rm = TRUE)
 
-# Make a venn diagram to show the overlap between the targetGenes of the two datasets
+# Split the names of depmapMedians to into the gene symbol and entrez id by splitting on the " (" and remove the ending ")"
+geneSymbols <- sapply(names(depmapMedians), function(x) strsplit(x," \\(")[[1]][1])
+entrezIDs <- sapply(names(depmapMedians), function(x) strsplit(x," \\(")[[1]][2]) %>% 
+          sapply(function(x) substr(x,1,nchar(x)-1))
 
-#library(ggvenn)
+geneIDsMap <- data.table::fread("/home/gummi/netprop/data/ensmbleIDtoNameAndNCBI.txt",data.table = FALSE)
 
-#vennData <- list("Genes From EVA, Clingen and Orphanet (Score > 0.5) " = unique(assocDataRareDiseasesCollapsed$targetId),
-#                 "Genes From OT Genetics (L2G > 0.2)" = unique(rareDiseaseAssocsFromOTgenetics$targetId))
+mappFromEntrezToSymbol <- setNames(geneIDsMap$`Gene stable ID`,geneIDsMap$`NCBI gene (formerly Entrezgene) ID`)
 
-#ggvenn(vennData) + ggtitle("Overlap of Gene Associations of Rare Diseases (Traits appearing in both datasets, n = 386)") 
+ensemblIds <- mappFromEntrezToSymbol[entrezIDs]
 
-#length(unique(assocDataRareDiseasesCollapsed$diseaseId))
+
+depmapMediansDF <- data.frame(geneSymbol = geneSymbols,entrezID = entrezIDs,
+                              ensemblID = ensemblIds,
+                              medianDep = depmapMedians)
+
+# Save as csv 
+write.csv(depmapMediansDF, file = paste0(netPropPath,"/data/depmapMedians.csv"), row.names = FALSE)
+
+```
+```{r get set of rare traits} 
+
+# load protein abundances from paxdb
+paxdbData <- data.table::fread("/home/gummi/netprop/data/9606-WHOLE_ORGANISM-integrated.txt",data.table = FALSE)
+
+# Get the mapping from ensembl protein id to ensemble gene id
+proteinToGene <- data.table::fread("/home/gummi/netprop/data/geneToEnsmbl.txt",data.table = FALSE)
+
+enstPtoEnstG <- setNames(proteinToGene$`Gene stable ID`,proteinToGene$`Protein stable ID`)
+
+paxdbData$ensemblID <- enstPtoEnstG[paxdbData$`#string_external_id`]
+
+write.csv(paxdbData, file = paste0(netPropPath,"/data/proteinAbundance.csv"), row.names = FALSE)
+```
+
+
+```{r get set of rare traits} 
+
+# Load the constraint data at /home/gummi/netprop/data/gnomad.v4.0.constraint_metrics.tsv
+
+constraintData <- read.table(paste0(netPropPath,"/data/gnomad.v4.0.constraint_metrics.tsv"), header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+constraintData <- constraintData[as.logical(constraintData$mane_select),]
+
+transcriptToGene <- data.table::fread("/home/gummi/netprop/data/transcriptToensmbleID.txt",data.table = FALSE)
+
+depMapData <- data.table::fread("/home/gummi/netprop/data/depmapMedians.csv",data.table = FALSE)
+
+hpaData <- data.table::fread("/home/gummi/netprop/data/hpaData.tsv",data.table = FALSE)
+
+proteinAbundance <- data.table::fread("/home/gummi/netprop/data/proteinAbundance.csv",data.table = FALSE)
+
+nrow(constraintData)
+constraintData <- left_join(constraintData, transcriptToGene, by = c("transcript" = "Transcript stable ID" )) %>%
+                   left_join(hpaData, by = c("Gene stable ID" = "Ensembl")) %>%
+                   filter(!stringr::str_detect(transcript, "NM_")) %>%
+                    dplyr::select(-transcript) %>%
+                    distinct() %>%
+                    left_join(depMapData, by = c("Gene stable ID" = "ensemblID")) %>%
+                    left_join(proteinAbundance, by = c("Gene stable ID" = "ensemblID"))
+nrow(constraintData)
+View(head(constraintData))
+
+# Add the length of the gene by using Gene start (bp) and Gene end (bp)
+constraintData <- constraintData %>% 
+         mutate(geneLength = abs(`Gene end (bp)` - `Gene start (bp)`))
 
 ```
 
 
 
-```{r get set of rare traits} 
-assocDataBySource <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE)
-
-# Filter for only diseaseId == "EFO_0005140"
-autoImmuneAssocs <- assocDataBySource %>% filter(diseaseId == "EFO_0005140")
-
-dim(autoImmuneAssocs)
-
-autoImmuneAssocsEVA <- autoImmuneAssocs %>% filter(datasourceId == "eva")
-
-
-
-```
-
-
-
 
 ```{r get set of rare traits} 
+scoreCutoffOrphanet <- 0.5
+scoreCutoffEVA <- 0.5
+scoreCutoffOT <- 0.4
 
+summary(assocDataBySource$score[assocDataBySource$datasourceId == "orphanet"])
+summary(assocDataBySource$score[assocDataBySource$datasourceId == "eva"])
 
 # Analyis for rare diseases????
 assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","eva")) 
 # Filter out orphanet assoications that are less then or equal to 0.5
-assocDataRareDiseases <- assocDataRareDiseases %>% filter(!(datasourceId == "orphanet" & score <= 0.5))
+assocDataRareDiseases <- assocDataRareDiseases %>% filter(!(datasourceId == "orphanet" & score <= scoreCutoffOrphanet))
 # Filter out eva tha assocationas that are less then 0.5
-assocDataRareDiseases <- assocDataRareDiseases %>% filter(!(datasourceId == "eva" & score <= 0.5))
+assocDataRareDiseases <- assocDataRareDiseases %>% filter(!(datasourceId == "eva" & score <= scoreCutoffEVA))
 
 #"clingen" "eva_somatic"
 assocDataRareDiseases$name <- idToName[assocDataRareDiseases$diseaseId]
@@ -109,56 +145,28 @@ assocDataRareDiseasesCollapsed <- assocDataRareDiseases[,c("score","diseaseId","
 rareDiseaseAssocsFromOTgenetics <- assocDataBySource %>% 
           filter(datasourceId == "ot_genetics_portal") %>%
           filter(diseaseId %in% unique(assocDataRareDiseasesCollapsed$diseaseId)) %>%
-          filter(score > 0.4)
+          filter(score > scoreCutoffOT)
 
 assocDataRareDiseasesCollapsed <- assocDataRareDiseasesCollapsed %>% 
               filter(diseaseId %in% unique(rareDiseaseAssocsFromOTgenetics$diseaseId))
 
-# Remove the disease term EFO_0000508
-assocDataRareDiseasesCollapsed <- assocDataRareDiseasesCollapsed %>% filter(diseaseId != "EFO_0000508")
-rareDiseaseAssocsFromOTgenetics <- rareDiseaseAssocsFromOTgenetics %>% filter(diseaseId != "EFO_0000508")
+# Remove the disease terms that are too generic
+tooGeneric <- c("EFO_0000508", "EFO_0001444", "OTAR_0000018", "EFO_0004747",
+                "EFO_0004503", "EFO_0000651", "HP_0000118", "EFO_0004529",
+                "EFO_0005278", "EFO_0007937", "EFO_0004303", "Orphanet_71859",
+                "EFO_0006843", "Orphanet_183530", "GO_0008150", "EFO_0005105",
+                "EFO_0004298", "EFO_0000719", "HP_0100543", "EFO_0004311" , "EFO_0004530",
+                "EFO_0000246", "EFO_0004557", "MONDO_0000429", "MONDO_0019755",
+                "EFO_1000017")
+
+assocDataRareDiseasesCollapsed <- assocDataRareDiseasesCollapsed %>% filter(!(diseaseId %in% tooGeneric))
+rareDiseaseAssocsFromOTgenetics <- rareDiseaseAssocsFromOTgenetics %>% filter(!(diseaseId %in% tooGeneric))
 
 rareDiseaseAssocsFromOTgenetics$source <- "ot_genetics_portal"
 assocDataRareDiseasesCollapsed$source <- "eva, orphanet"
 
-nrow(assocDataRareDiseasesCollapsed)
-nrow(rareDiseaseAssocsFromOTgenetics)
 
-vennData <- list( "OT Genetics (L2G > 0.4)" = unique(rareDiseaseAssocsFromOTgenetics$targetId),
-                  "EVA/Orph (> 0.5) " = unique(assocDataRareDiseasesCollapsed$targetId))
-
-geneVennPlot <- ggvenn(vennData,set_name_size = 4,auto_scale = TRUE) + 
-              labs(title = "Overlap of Genes associated with disease",
-              subtitle =  paste0("Across traits with associations that meet cutoff in both cohorts , n = ",length(unique(assocDataRareDiseasesCollapsed$diseaseId)),")")) +
-              scale_fill_manual(values = c("#FF0000","#0000FF")) 
-
-
-combDF <- rbind(rareDiseaseAssocsFromOTgenetics[,c("score","diseaseId","targetId", "source")],assocDataRareDiseasesCollapsed)
-
-# Save the combDF as a csv for later analysis
-write.csv(combDF, file = paste0(netPropPath,"/data/rarevsGWASAssocs0504.csv"), row.names = FALSE)
-
-combDF <- combDF[,c("diseaseId","targetId", "source")]
-# Change so that if a gene is in both datasets, it is only counted once and the source is set to "both"	
-
-for(trait in unique(combDF$diseaseId)){
-  temp <- combDF %>% filter(diseaseId == trait)
-  for(gene in unique(temp$targetId)){
-    if(sum(temp$targetId == gene) > 1){
-      indsVec <- which(combDF$diseaseId == trait & combDF$targetId == gene)
-      combDF$source[indsVec] <- "both"
-    }
-  }
-}
-nrow(combDF)
-combDF <- distinct(combDF)
-nrow(combDF)
-
-
-
-
-
-# For each trait, calculate the number of genes that are associated with it in each dataset and the number of genes that are associated with it in both datasets
+# Compute some stats for the different traits
 traitList <- list()
 for(trait in unique(c(assocDataRareDiseasesCollapsed$diseaseId, rareDiseaseAssocsFromOTgenetics$diseaseId))){
   ot <- rareDiseaseAssocsFromOTgenetics %>% filter(diseaseId == trait)
@@ -174,17 +182,65 @@ traitDF <- do.call(rbind, traitList) %>% as.data.frame()
 traitDF <- traitDF %>% 
   mutate(PropUniqueOT = (ot - overlap) / all,
          PropUniqueRD = (rd - overlap) / all,
-         PropOverlap = overlap / all)
+         PropOverlap = overlap / all,
+         diff = abs(ot - rd))
 
 traitDFfilt <- traitDF %>% filter(ot != 0)
 
-
-summary(traitDFfilt$PropOverlap)
-summary(traitDFfilt$PropUniqueOT)
-summary(traitDFfilt$PropUniqueRD)
-
 traitDF$name <- idToName[rownames(traitDF)]
 traitDFfilt$name <- idToName[rownames(traitDFfilt)]
+
+# Filter out traits that have PropOverlap == 1
+fullyOverlapping <- rownames(traitDFfilt)[which(traitDFfilt$PropOverlap == 1)]
+
+traitDFfilt <- traitDFfilt %>% filter(!(rownames(traitDFfilt) %in% fullyOverlapping))
+
+assocDataRareDiseasesCollapsed <- assocDataRareDiseasesCollapsed %>% filter(!(diseaseId %in% fullyOverlapping))
+rareDiseaseAssocsFromOTgenetics <- rareDiseaseAssocsFromOTgenetics %>% filter(!(diseaseId %in% fullyOverlapping))
+
+
+# Create venn diagrams to show the overlap between the targetGenes of the two datasets
+vennData <- list("a" = unique(rareDiseaseAssocsFromOTgenetics$targetId),
+                "b" = unique(assocDataRareDiseasesCollapsed$targetId))
+                  
+names(vennData) <- c(paste0("OT Genetics (L2G > ",scoreCutoffOT,")"),paste0("EVA/Orph (Score > ",scoreCutoffOrphanet,")"))
+
+geneVennPlot <- ggvenn(vennData,set_name_size = 4,auto_scale = TRUE) + 
+              labs(title = "Overlap of Genes that are associated with disease",
+              subtitle =  paste0("Across traits with associations that meet cutoff in both cohorts , n = ",length(unique(assocDataRareDiseasesCollapsed$diseaseId)),")")) +
+              scale_fill_manual(values = c("#FF0000","#0000FF")) 
+
+
+vennData2 <- list("a" = paste0(rareDiseaseAssocsFromOTgenetics$targetId,rareDiseaseAssocsFromOTgenetics$diseaseId),
+                "b" = paste0(assocDataRareDiseasesCollapsed$targetId,assocDataRareDiseasesCollapsed$diseaseId))
+
+names(vennData2) <- c(paste0("OT Genetics (L2G > ",scoreCutoffOT,")"),paste0("EVA/Orph (Score > ",scoreCutoffOrphanet,")"))
+
+geneVennPlot2 <- ggvenn(vennData2,set_name_size = 4,auto_scale = TRUE) + 
+              labs(title = "Overlap of Gene-Disease associations",
+              subtitle =  paste0("Across traits with associations that meet cutoff in both cohorts , n = ",length(unique(assocDataRareDiseasesCollapsed$diseaseId)),")")) +
+              scale_fill_manual(values = c("#FF0000","#0000FF"))
+
+combDF <- rbind(rareDiseaseAssocsFromOTgenetics[,c("score","diseaseId","targetId", "source")],assocDataRareDiseasesCollapsed)
+
+# Save the combDF as a csv for later analysis
+write.csv(combDF, file = paste0(netPropPath,"/data/rarevsGWASAssocs0505.csv"), row.names = FALSE)
+
+combDF <- combDF[,c("diseaseId","targetId", "source")]
+# Change so that if a gene is in both datasets, it is only counted once and the source is set to "both"	
+
+for(trait in unique(combDF$diseaseId)){
+  temp <- combDF %>% filter(diseaseId == trait)
+  for(gene in unique(temp$targetId)){
+    if(sum(temp$targetId == gene) > 1){
+      indsVec <- which(combDF$diseaseId == trait & combDF$targetId == gene)
+      combDF$source[indsVec] <- "both"
+    }
+  }
+}
+
+combDF <- distinct(combDF)
+
 
 # filter out overly generic traits
 # filter out monogenics 
@@ -194,12 +250,10 @@ traitDFfilt$name <- idToName[rownames(traitDFfilt)]
 # leave out clingen
 # leave out eva_somatic
 
-# Plot a barplot showing the proportion of genes that are unique to each dataset and the proportion of genes that are in both datasets
 
-library(ggplot2)
 
 traitDFfiltPivot <- traitDFfilt %>% 
-  select(ot,rd,overlap) %>%
+  dplyr::select(ot,rd,overlap) %>%
   tidyr::gather(key = "dataset", value = "counts")
 
 traitDFfiltPivot$dataset <- factor(traitDFfiltPivot$dataset,
@@ -225,13 +279,13 @@ combDF$source <- factor(combDF$source, levels = c("ot_genetics_portal","both","e
 
 b <- ggplot() + 
                 geom_boxplot(data = traitDFfiltPivot, aes(x = dataset, y = counts, fill = dataset),outlier.alpha = 0) + 
-                geom_jitter(data = traitDFfiltPivot, aes(x = dataset, y = counts, fill = dataset), width = 0.1, alpha = 0.3) +
-                geom_text(data = OriginCountsPerTrait, aes(x = source, y = 1.1, label = n), vjust = 1) +
+                geom_jitter(data = traitDFfiltPivot, aes(x = dataset, y = counts, fill = dataset), width = 0.3, alpha = 0.3) +
                 ggtitle("") + 
                 ylab("# Associations Per Trait") + 
                 xlab("") + 
                 theme_classic() +
-                guides(fill=guide_legend(title="Origin of Association")) 
+                guides(fill=guide_legend(title="Origin of Association")) +
+                scale_y_log10()
 
 
 
@@ -244,42 +298,371 @@ a <- ggplot(combDF, aes(x = diseaseIdFactor, fill = source)) +
                 theme(axis.text.x = element_blank(),
                       axis.ticks.x = element_blank()) +
                 guides(fill=guide_legend(title="Origin of Association")) 
-aCountsPlot <- ggplot(AssocCountsPerTraits, aes(x = diseaseId, y = n, fill = source)) + 
-                geom_bar(stat = "identity", color = "gray") +
+
+aCountsPlot <- ggplot(combDF, aes(x = diseaseIdFactor, fill = source)) + 
+                geom_bar(position = "stack",width = 1) +
                 ylab("#Assoc") + 
                 xlab("") +
                 theme_classic() +
                 theme(axis.text.x = element_blank(),
                       axis.ticks.x = element_blank()) +
-                      scale_y_log10() +
-                      # Add a empty legend so it aligns with previous plot
-                      guides(fill=guide_legend(title="Origin of Association")) +
-                      # Make the color palette black
-                      scale_fill_manual(values = c("All" = "gray")) 
+                guides(fill=guide_legend(title="Origin of Association")) +
+                scale_y_log10() 
 
 # Create a cowplot::plot_grid() with the ggvenn plot and and empty plot so widths align
 
-geneVennplotEmptyAdded <- cowplot::plot_grid(geneVennPlot,ggplot() + theme_minimal(),ncol =2,rel_widths = c(3,4))
+geneVennplotEmptyAdded <- cowplot::plot_grid(geneVennPlot,geneVennPlot2,ncol =2,rel_widths = c(3,3))
 
 firstPlotRareDisease <- cowplot::plot_grid(a,aCountsPlot,ncol = 1,rel_heights = c(4,1))
 
-rareDiseaePlot <- cowplot::plot_grid(geneVennplotEmptyAdded,firstPlotRareDisease,b,ncol = 1, rel_heights = c(3,3,1.5))
 
-cowplot::ggsave2("rareDiseaseOverlapPlot.pdf",rareDiseaePlot,width = 10,height = 12)
 
+
+
+# Compute the summary stats constraints for the different genesets
+otGeneticsLOF <- constraintData$`lof.z_score`[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+evaOrphanetLOF <- constraintData$`lof.z_score`[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+allLOF <- constraintData$`lof.z_score`
+
+otGeneticsMissense <- constraintData$`mis.z_score`[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+evaOrphanetMissense <- constraintData$`mis.z_score`[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+allMissense <- constraintData$`mis.z_score`
+
+
+summary(otGeneticsLOF)
+summary(evaOrphanetLOF)
+
+summary(otGeneticsMissense)
+summary(evaOrphanetMissense)
+
+# Plot the distribution of the constraint scores for the two datasets
+
+ttestLOF <- t.test(otGeneticsLOF,evaOrphanetLOF)
+ttestMissense <- t.test(otGeneticsMissense,evaOrphanetMissense)
+
+constraintPlotLOF <- ggplot() + 
+                geom_density(aes(x = allLOF, fill = "All", color = "All"), alpha = 0.5) +
+                geom_density(aes(x = otGeneticsLOF, fill = "OT Genetics (L2G > 0.4)", color = "OT Genetics (L2G > 0.4)"), alpha = 0.5) +
+                geom_density(aes(x = evaOrphanetLOF, fill = "EVA/Orphanet (Score > 0.5)", color = "EVA/Orphanet (Score > 0.5)"), alpha = 0.5) +
+                geom_rug(aes(x = evaOrphanetLOF, color = "EVA/Orphanet (Score > 0.5)"),alpha = 0.03) +
+                geom_rug(aes(x = otGeneticsLOF, color = "OT Genetics (L2G > 0.4)"),alpha = 0.01) +
+                labs(title = "Distribution of LOF Constraint Z-Scores",
+                      subtitle = paste0("P-value for difference in means: ",format(ttestLOF$p.value))) + 
+                xlab("LOF Constraint Score") + 
+                ylab("Density") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Genes in:")) +
+                # Remove the legend
+                theme(legend.position = "none")
+
+constraintPlotMissense <- ggplot() +
+                geom_density(aes(x = allMissense, fill = "All", color = "All"), alpha = 0.5) +
+                geom_density(aes(x = otGeneticsMissense, fill = "OT Genetics (L2G > 0.4)", color = "OT Genetics (L2G > 0.4)"), alpha = 0.5) +
+                geom_density(aes(x = evaOrphanetMissense, fill = "EVA/Orphanet (Score > 0.5)", color = "EVA/Orphanet (Score > 0.5)"), alpha = 0.5) +
+                geom_rug(aes(x = evaOrphanetMissense, color = "EVA/Orphanet (Score > 0.5)"),alpha = 0.03) +
+                geom_rug(aes(x = otGeneticsMissense, color = "OT Genetics (L2G > 0.4)"),alpha = 0.01) +
+                labs(title = "Distribution of Missense Constraint Z-Scores",
+                      subtitle = paste0("P-value for difference in means: ",format(ttestMissense$p.value))) + 
+                xlab("Missense Constraint Score") + 
+                ylab("Density") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Genes in:"))+
+                # Remove the legend
+                theme(legend.position = "none")
+
+
+# Comapare gene types
+otGeneticsGeneTypes <- constraintData$`Chromosome`[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+evaOrphanetGeneTypes <- constraintData$`Chromosome`[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+
+# Make a barplot fith fill genetype and the x axis origin of the genes
+
+chromosomeDF <- data.frame(geneType = c(otGeneticsGeneTypes,evaOrphanetGeneTypes),
+                         origin = c(rep("OT Genetics (L2G > 0.4)",length(otGeneticsGeneTypes)),
+                                     rep("EVA/Orphanet (Score > 0.5)",length(evaOrphanetGeneTypes))))
+
+chromosomePlot <- ggplot(chromosomeDF, aes(x = origin, fill = geneType)) +
+                geom_bar(position = "fill") +
+                ggtitle("Proportion of Genes by Chromosome") + 
+                ylab("Proportion of Genes") + 
+                xlab("") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Chromosome")) +
+                # Better color palette that has more then 22 colors
+                scale_fill_manual(values = c("#FF0000","#0000FF","#00FF00","#FF00FF","#FFFF00","#00FFFF","#FFA500","#A52A2A","#800080","#008000","#808000",
+                                              "#008080","#800000","#000080","#000000","#FFC0CB","#FF4500","#FFD700","#FF69B4","#FF6347","#FF1493","#FF00FF"))
+
+
+
+# Plot the distribution of gene lengths for the two datasets
+
+otGeneticsGeneLength <- constraintData$geneLength[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+evaOrphanetGeneLength <- constraintData$geneLength[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+allGeneLength <- constraintData$geneLength
+
+ttestGeneLength <- t.test(log(otGeneticsGeneLength),log(evaOrphanetGeneLength))
+
+geneLengthPlot <- ggplot() + 
+                geom_density(aes(x = allGeneLength, fill = "All", color = "All"), alpha = 0.5) +
+                geom_density(aes(x = otGeneticsGeneLength, fill = "OT Genetics (L2G > 0.4)", color = "OT Genetics (L2G > 0.4)"), alpha = 0.5) +
+                geom_density(aes(x = evaOrphanetGeneLength, fill = "EVA/Orphanet (Score > 0.5)", color = "EVA/Orphanet (Score > 0.5)"), alpha = 0.5) +
+                geom_rug(aes(x = evaOrphanetGeneLength, color = "EVA/Orphanet (Score > 0.5)"),alpha = 0.02) +
+                geom_rug(aes(x = otGeneticsGeneLength, color = "OT Genetics (L2G > 0.4)"),alpha = 0.01) +
+                labs(title = "Distribution of Gene Lengths",
+                      subtitle = paste0("P-value for difference in means (log-transformed): ",format(ttestGeneLength$p.value))) + 
+                xlab("Gene Length (bp)") + 
+                ylab("Density") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Genes in:")) +
+                scale_x_log10() +
+                scale_color_discrete(guide = "none")
+
+# Add depmapmedian plot
+
+otGeneticsDepMap <- constraintData$medianDep[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+evaOrphanetDepMap <- constraintData$medianDep[which(constraintData$`Gene stable ID`%in% vennData[[2]])]
+allDepMap <- constraintData$medianDep
+
+
+propOfBeingDependantOT <- table(otGeneticsDepMap > 0.5)/length(otGeneticsDepMap)
+propOfBeingDependantEVA <- table(evaOrphanetDepMap > 0.5)/length(evaOrphanetDepMap)
+propOfBeingDependantAll <- table(allDepMap > 0.5)/length(allDepMap)
+
+depMapPlot <- ggplot() + 
+                geom_density(aes(x = allDepMap, fill = "All", color = "All"), alpha = 0.5) +
+                geom_density(aes(x = otGeneticsDepMap, fill = "OT Genetics (L2G > 0.4)", color = "OT Genetics (L2G > 0.4)"), alpha = 0.5) +
+                geom_density(aes(x = evaOrphanetDepMap, fill = "EVA/Orphanet (Score > 0.5)", color = "EVA/Orphanet (Score > 0.5)"), alpha = 0.5) +
+                geom_rug(aes(x = evaOrphanetDepMap, color = "EVA/Orphanet (Score > 0.5)"),alpha = 0.03) +
+                geom_rug(aes(x = otGeneticsDepMap, color = "OT Genetics (L2G > 0.4)"),alpha = 0.01) +
+                labs(title = "Distribution of DepMap Dependency Scores",
+                      subtitle = paste0("Fraction of P(Dependent) > 0.5 genes in OT Genetics: ",round(propOfBeingDependantOT[2]*100,2),"%",
+                                        "\nFraction of P(Dependent) > 0.5 genes in EVA/Orphanet: ",round(propOfBeingDependantEVA[2]*100,2),"%",
+                                        "\nFraction of P(Dependent) > 0.5 genes in All: ",round(propOfBeingDependantAll[2]*100,2),"%")) +
+                xlab("Probility of Being Dependant") + 
+                ylab("Density") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Genes in:")) +
+                scale_color_discrete(guide = "none")
+          
+
+# Add protein abundance plot
+
+otGeneticsProteinAbundance <- constraintData$abundance[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+evaOrphanetProteinAbundance <- constraintData$abundance[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+allProteinAbundance <- constraintData$abundance
+
+ttestProteinAbundance <- t.test(log1p(otGeneticsProteinAbundance),log1p(evaOrphanetProteinAbundance))
+
+# Create a negative bionomial model to check using glm
+# Create matrix with the data with a column for labels and values
+modelDF <- data.frame(value = c(otGeneticsProteinAbundance,evaOrphanetProteinAbundance),
+                      label = c(rep("ot",length(otGeneticsProteinAbundance)),
+                                rep("eva",length(evaOrphanetProteinAbundance))))
+
+model <- MASS::glm.nb(value ~ label, data = modelDF)
+
+# Get p-value for the difference in means
+pValue <- summary(model)$coefficients[2,4]
+
+proteinAbundancePlot <- ggplot() + 
+                geom_density(aes(x = allProteinAbundance+1, fill = "All",
+                                color="All"), alpha = 0.5) +
+                geom_density(aes(x = otGeneticsProteinAbundance+1, fill = "OT Genetics (L2G > 0.4)" ,
+                                color = "OT Genetics (L2G > 0.4)"), alpha = 0.5) +
+                geom_density(aes(x = evaOrphanetProteinAbundance+1, fill = "EVA/Orphanet (Score > 0.5)" ,
+                                color = "EVA/Orphanet (Score > 0.5)"), alpha = 0.5) +
+                geom_rug(aes(x = evaOrphanetProteinAbundance+1, color = "EVA/Orphanet (Score > 0.5)"),alpha = 0.03) +
+                geom_rug(aes(x = otGeneticsProteinAbundance+1, color = "OT Genetics (L2G > 0.4)"),alpha = 0.01) +
+                labs(title = "Distribution of Protein Abundance",
+                      subtitle = paste0("P-value for difference in means (negative binomal glm): ",format(pValue))) + 
+                xlab("log10(Protein Abundance + 1)") + 
+                ylab("Density") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Genes in:")) + 
+                scale_x_log10() +
+                scale_color_discrete(guide = "none")
+
+
+
+# Look at Biological Process column in the constraintData
+
+biologicalProcessOT <- constraintData$`Biological process`[which(constraintData$`Gene stable ID` %in% vennData[[1]])] %>%
+                      strsplit(", ") %>% 
+                      unlist() %>%
+                      tolower() %>%
+                      table() %>%
+                      as.data.frame() %>%
+                      arrange(desc(Freq)) %>%
+                      setNames(c("Process","Freq"))
+                  
+biologicalProcessOT$Freq <- biologicalProcessOT$Freq/sum(biologicalProcessOT$Freq)
+
+biologicalProcessEVA <- constraintData$`Biological process`[which(constraintData$`Gene stable ID` %in% vennData[[2]])] %>%
+                      strsplit(", ") %>% 
+                      unlist() %>%
+                      tolower() %>%
+                      table() %>%
+                      as.data.frame() %>%
+                      arrange(desc(Freq)) %>%
+                      setNames(c("Process","Freq"))
+
+biologicalProcessEVA$Freq <- biologicalProcessEVA$Freq/sum(biologicalProcessEVA$Freq)
+
+
+top20uniqueOT <- unique(c(biologicalProcessOT$Process[1:30],biologicalProcessEVA$Process[1:30]))
+
+biologicalProcessDF <- rbind(biologicalProcessOT[biologicalProcessOT$Process %in% top20uniqueOT,],
+                             biologicalProcessEVA[biologicalProcessEVA$Process %in% top20uniqueOT,])
+
+biologicalProcessDF$origin <- c(rep("OT Genetics (L2G > 0.4)",length(top20uniqueOT) ),
+                                rep("EVA/Orphanet (Score > 0.5)",length(top20uniqueOT)))
+
+# Plot the distribution of the biological processes
+
+biologicalProcessPlot <- ggplot(biologicalProcessDF, aes(x = reorder(Process,Freq), y = Freq, fill = origin)) +
+                geom_bar(stat = "identity",position = "fill") +
+                ggtitle("Top Biological Processes") + 
+                ylab("Count") + 
+                xlab("Biological Process") + 
+                theme_classic() +
+                theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+                guides(fill=guide_legend(title="Genes in:")) +
+                geom_hline(yintercept = 0.5, linetype = "dashed", color = "red")
+
+# Do the same thing but for subcellular location
+
+subcellularLocationOT <- constraintData$`Subcellular location`[which(constraintData$`Gene stable ID` %in% vennData[[1]])] %>%
+                      strsplit(",") %>% 
+                      unlist() %>%
+                      tolower() %>%
+                      table() %>%
+                      as.data.frame() %>%
+                      arrange(desc(Freq)) %>%
+                      setNames(c("Location","Freq"))
+
+subcellularLocationOT$Freq <- subcellularLocationOT$Freq/sum(subcellularLocationOT$Freq)
+
+subcellularLocationEVA <- constraintData$`Subcellular location`[which(constraintData$`Gene stable ID` %in% vennData[[2]])] %>%
+                      strsplit(",") %>% 
+                      unlist() %>%
+                      tolower() %>%
+                      table() %>%
+                      as.data.frame() %>%
+                      arrange(desc(Freq)) %>%
+                      setNames(c("Location","Freq"))
+
+subcellularLocationEVA$Freq <- subcellularLocationEVA$Freq/sum(subcellularLocationEVA$Freq)
+
+top20uniqueOT <- unique(c(subcellularLocationOT$Location[1:30],subcellularLocationEVA$Location[1:30]))
+
+subcellularLocationDF <- rbind(subcellularLocationOT[subcellularLocationOT$Location %in% top20uniqueOT,],
+                             subcellularLocationEVA[subcellularLocationEVA$Location %in% top20uniqueOT,])
+
+subcellularLocationDF$origin <- c(rep("OT Genetics (L2G > 0.4)",length(top20uniqueOT) ),
+                                rep("EVA/Orphanet (Score > 0.5)",length(top20uniqueOT)))
+
+# Plot the distribution of the biological processes
+
+subcellularLocationPlot <- ggplot(subcellularLocationDF, aes(x = reorder(Location,Freq), y = Freq, fill = origin)) +
+                geom_bar(stat = "identity",position = "fill") +
+                ggtitle("Top Subcellular Locations") + 
+                ylab("Count") + 
+                xlab("Subcellular Location") + 
+                theme_classic() +
+                theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+                guides(fill=guide_legend(title="Genes in:")) +
+                geom_hline(yintercept = 0.5, linetype = "dashed", color = "red")
+
+
+# Now do the same thing but for Molecular Function
+
+molecularFunctionOT <- constraintData$`Molecular function`[which(constraintData$`Gene stable ID` %in% vennData[[1]])] %>%
+                      strsplit(", ") %>% 
+                      unlist() %>%
+                      tolower() %>%
+                      table() %>%
+                      as.data.frame() %>%
+                      arrange(desc(Freq)) %>%
+                      setNames(c("Function","Freq"))
+
+molecularFunctionOT$Freq <- molecularFunctionOT$Freq/sum(molecularFunctionOT$Freq)
+
+molecularFunctionEVA <- constraintData$`Molecular function`[which(constraintData$`Gene stable ID` %in% vennData[[2]])] %>%
+                      strsplit(", ") %>% 
+                      unlist() %>%
+                      tolower() %>%
+                      table() %>%
+                      as.data.frame() %>%
+                      arrange(desc(Freq)) %>%
+                      setNames(c("Function","Freq"))
+
+molecularFunctionEVA$Freq <- molecularFunctionEVA$Freq/sum(molecularFunctionEVA$Freq)
+
+top20uniqueOT <- unique(c(molecularFunctionOT$Function[1:30],molecularFunctionEVA$Function[1:30]))
+
+molecularFunctionDF <- rbind(molecularFunctionOT[molecularFunctionOT$Function %in% top20uniqueOT,],
+                             molecularFunctionEVA[molecularFunctionEVA$Function %in% top20uniqueOT,])
+
+molecularFunctionDF$origin <- c(rep("OT Genetics (L2G > 0.4)",length(top20uniqueOT) ),
+                                rep("EVA/Orphanet (Score > 0.5)",length(top20uniqueOT)))
+
+# Plot the distribution of the biological processes
+
+molecularFunctionPlot <- ggplot(molecularFunctionDF, aes(x = reorder(Function,Freq), y = Freq, fill = origin)) +
+                geom_bar(stat = "identity",position = "fill") +
+                ggtitle("Top Molecular Functions") + 
+                ylab("Count") + 
+                xlab("Molecular Function") + 
+                theme_classic() +
+                theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+                guides(fill=guide_legend(title="Genes in:")) +
+                geom_hline(yintercept = 0.5, linetype = "dashed", color = "red")
+
+
+
+
+###################
+# Plot the stuff
+
+depmapAndProteinPlots <- cowplot::plot_grid(depMapPlot,proteinAbundancePlot,ncol = 2,rel_widths = c(3,3))
+
+# Plot the biological process, subcellular location and molecular function plots
+biologicalProcessPlot <- cowplot::plot_grid(molecularFunctionPlot,subcellularLocationPlot,ncol = 1,rel_heights = c(3,3))
+
+depAbundanceAndProcessPlots <- cowplot::plot_grid(depmapAndProteinPlots,biologicalProcessPlot,ncol = 1,rel_heights = c(3,2))
+
+constraintPlot <- cowplot::plot_grid(constraintPlotLOF,constraintPlotMissense,geneLengthPlot,ncol = 3,rel_widths = c(3,3,5))
+
+rareDiseaePlot <- cowplot::plot_grid(geneVennplotEmptyAdded,firstPlotRareDisease,constraintPlot,ncol = 1, rel_heights = c(3,3,1.5))
+
+
+#rareDiseaePlot
+#cowplot::ggsave2("rareDiseaseOverlapPlotInDirectNew.pdf",rareDiseaePlot,width = 14,height = 14)
 ```
+
+
+
+
+
+
+
 
 # Mice
 
 ```{r get set of rare traits}
 
+scoreCutoffIMPC <- 0.65
+scoreCutoffOT <- 0.4
+
+summary(assocDataBySource$score[assocDataBySource$datasourceId == "impc"])
+summary(assocDataBySource$score[assocDataBySource$datasourceId == "ot_genetics_portal"])
 
 # Now take find the overlap between associations from the IMPC and open targets genetics
-mouseAssocs <- filter(assocDataBySource, datasourceId == "impc" & score > 0.5)
+mouseAssocs <- filter(assocDataBySource, datasourceId == "impc" & score > scoreCutoffIMPC)
 
 rareDiseaseAssocsFromOTgenetics <- assocDataBySource %>% 
           filter(datasourceId == "ot_genetics_portal") %>%
-          filter(score > 0.4) %>%
+          filter(score > scoreCutoffOT) %>%
           filter(diseaseId %in% unique(mouseAssocs$diseaseId)) 
 
 
@@ -291,17 +674,68 @@ mouseAssocs <- mouseAssocs %>%
 mouseAssocs$source <- "impc"
 rareDiseaseAssocsFromOTgenetics$source <- "ot_genetics_portal"
 
-nrow(mouseAssocs)
-nrow(rareDiseaseAssocsFromOTgenetics)
+# Remove too generic traits
+
+mouseAssocs <- mouseAssocs %>% filter(!(diseaseId %in% tooGeneric))
+rareDiseaseAssocsFromOTgenetics <- rareDiseaseAssocsFromOTgenetics %>% filter(!(diseaseId %in% tooGeneric))
+
+
+# Calculate some stats for the different traits
+traitList <- list()
+for(trait in unique(c(mouseAssocs$diseaseId, rareDiseaseAssocsFromOTgenetics$diseaseId))){
+  ot <- rareDiseaseAssocsFromOTgenetics %>% filter(diseaseId == trait)
+  other <- mouseAssocs %>% filter(diseaseId == trait) 
+  all <- unique(c(ot$targetId, other$targetId))
+  overlapGenes <- intersect(ot$targetId, other$targetId)
+  traitList[[trait]] <- c("ot" = nrow(ot), "mouse" = nrow(other), "overlap" = length(overlapGenes), "all" = length(all))
+  
+}
+
+traitDF <- do.call(rbind, traitList) %>% as.data.frame()
+
+traitDF <- traitDF %>% 
+  mutate(PropUniqueOT = (ot - overlap) / all,
+         PropUniqueMOUSE = (mouse - overlap) / all,
+         PropOverlap = overlap / all,
+          diff = abs(ot - mouse))
+
+
+traitDFfilt <- traitDF %>% filter(ot != 0)
+
+
+traitDF$name <- idToName[rownames(traitDF)]
+traitDFfilt$name <- idToName[rownames(traitDFfilt)]
+
+
+# Filter out traits that have PropOverlap == 1
+fullyOverlapping <- rownames(traitDFfilt)[which(traitDFfilt$PropOverlap == 1)]
+
+traitDFfilt <- traitDFfilt %>% filter(!(rownames(traitDFfilt) %in% fullyOverlapping))
+
+mouseAssocs <- mouseAssocs %>% filter(!(diseaseId %in% fullyOverlapping))
+rareDiseaseAssocsFromOTgenetics <- rareDiseaseAssocsFromOTgenetics %>% filter(!(diseaseId %in% fullyOverlapping))
 
 
 vennData <- list( "OT Genetics (L2G > 0.4)" = unique(rareDiseaseAssocsFromOTgenetics$targetId),
                   "IMPC (> 0.5) " = unique(mouseAssocs$targetId))
+                
+names(vennData) <- c(paste0("OT Genetics (L2G > ",scoreCutoffOT,")"),
+                     paste0("IMPC (Score > ",scoreCutoffIMPC,")"))
 
 geneVennPlot <- ggvenn(vennData,set_name_size = 4,auto_scale = TRUE) + 
               labs(title = "Overlap of Genes associated with disease",
               subtitle =  paste0("Across traits with associations that meet cutoff in both cohorts , n = ",length(unique(mouseAssocs$diseaseId)),")")) +
               scale_fill_manual(values = c("#FF0000","#0000FF")) 
+
+vennData2 <- list("a" = paste0(rareDiseaseAssocsFromOTgenetics$targetId,rareDiseaseAssocsFromOTgenetics$diseaseId),
+                "b" = paste0(mouseAssocs$targetId,mouseAssocs$diseaseId))
+
+names(vennData2) <- c(paste0("OT Genetics (L2G > ",scoreCutoffOT,")"),paste0("IMPC (Score > ",scoreCutoffIMPC,")"))
+
+geneVennPlot2 <- ggvenn(vennData2,set_name_size = 4,auto_scale = TRUE) + 
+              labs(title = "Overlap of Gene-Disease associations",
+              subtitle =  paste0("Across traits with associations that meet cutoff in both cohorts , n = ",length(unique(mouseAssocs$diseaseId)),")")) +
+              scale_fill_manual(values = c("#FF0000","#0000FF"))
 
 
 combDF <- rbind(rareDiseaseAssocsFromOTgenetics[,c("score","diseaseId","targetId", "source")],
@@ -323,58 +757,15 @@ for(trait in unique(combDF$diseaseId)){
 }
 
 
-
-nrow(combDF)
 combDF <- distinct(combDF)
-nrow(combDF)
 
 
 
-
-
-# For each trait, calculate the number of genes that are associated with it in each dataset and the number of genes that are associated with it in both datasets
-traitList <- list()
-for(trait in unique(c(mouseAssocs$diseaseId, rareDiseaseAssocsFromOTgenetics$diseaseId))){
-  ot <- rareDiseaseAssocsFromOTgenetics %>% filter(diseaseId == trait)
-  other <- mouseAssocs %>% filter(diseaseId == trait) 
-  all <- unique(c(ot$targetId, other$targetId))
-  overlapGenes <- intersect(ot$targetId, other$targetId)
-  traitList[[trait]] <- c("ot" = nrow(ot), "mouse" = nrow(other), "overlap" = length(overlapGenes), "all" = length(all))
-  
-}
-
-traitDF <- do.call(rbind, traitList) %>% as.data.frame()
-
-traitDF <- traitDF %>% 
-  mutate(PropUniqueOT = (ot - overlap) / all,
-         PropUniqueMOUSE = (mouse - overlap) / all,
-         PropOverlap = overlap / all)
-
-
-traitDFfilt <- traitDF %>% filter(ot != 0)
-
-
-summary(traitDFfilt$PropOverlap)
-summary(traitDFfilt$PropUniqueOT)
-summary(traitDFfilt$PropUniqueMOUSE)
-
-traitDF$name <- idToName[rownames(traitDF)]
-traitDFfilt$name <- idToName[rownames(traitDFfilt)]
-
-# filter out overly generic traits
-# filter out monogenics 
-# score filtering
-# clinvar >= 0.5 filter
-# orphanet > 0.5 filter
-# leave out clingen
-# leave out eva_somatic
 
 # Plot a barplot showing the proportion of genes that are unique to each dataset and the proportion of genes that are in both datasets
 
-library(ggplot2)
-
 traitDFfiltPivot <- traitDFfilt %>% 
-  select(PropUniqueOT,PropUniqueMOUSE,PropOverlap) %>%
+  select(ot,mouse,overlap) %>%
   tidyr::gather(key = "dataset", value = "counts")
 
 
@@ -398,13 +789,13 @@ OriginCountsPerTrait <- combDF %>% group_by(source) %>% summarise(n = n()) %>% u
 
 c <- ggplot() + 
                 geom_boxplot(data = traitDFfiltPivot, aes(x = dataset, y = counts, fill = dataset),outlier.alpha = 0) + 
-                geom_jitter(data = traitDFfiltPivot, aes(x = dataset, y = counts, fill = dataset), width = 0.1, alpha = 0.3) +
-                geom_text(data = OriginCountsPerTrait, aes(x = source, y = 1.1, label = n), vjust = 1) +
+                geom_jitter(data = traitDFfiltPivot, aes(x = dataset, y = counts, fill = dataset), width = 0.3, alpha = 0.3) +
                 ggtitle("") + 
                 ylab("# Associations Per Trait") + 
                 xlab("") + 
                 theme_classic() +
-                guides(fill=guide_legend(title="Origin of Association")) 
+                guides(fill=guide_legend(title="Origin of Association")) +
+                scale_y_log10()
 
 
                 
@@ -419,28 +810,182 @@ d <- ggplot(combDF, aes(x = diseaseIdFactor, fill = source)) +
                       axis.ticks.x = element_blank()) +
                 guides(fill=guide_legend(title="Origin of Association")) 
 
-dCountsPlot <- ggplot(AssocCountsPerTraits, aes(x = diseaseId, y = n, fill = source)) + 
-                geom_bar(stat = "identity", color = "gray",width=1) +
-                ylab("#Assoc") + 
+
+
+dCountsPlot <- ggplot(combDF, aes(x = diseaseIdFactor, fill = source)) + 
+                geom_bar(position = "stack",width = 1) +
+                 ylab("#Assoc") + 
                 xlab("") +
                 theme_classic() +
                 theme(axis.text.x = element_blank(),
                       axis.ticks.x = element_blank()) +
-                      scale_y_log10() +
-                      # Add a empty legend so it aligns with previous plot
-                      guides(fill=guide_legend(title="Origin of Association")) +
-                      # Make the color palette black
-                      scale_fill_manual(values = c("All" = "gray")) 
+                guides(fill=guide_legend(title="Origin of Association")) + 
+                scale_y_log10()
 
-geneVennplotEmptyAdded <- cowplot::plot_grid(geneVennPlot,ggplot() + theme_minimal(),ncol =2,rel_widths = c(3,4))
+geneVennplotEmptyAdded <- cowplot::plot_grid(geneVennPlot,geneVennPlot2,ncol =2,rel_widths = c(3,3))
 
 firstPlot <- cowplot::plot_grid(d,dCountsPlot,ncol = 1,rel_heights = c(4,1))
 
 mousePlot <- cowplot::plot_grid(geneVennplotEmptyAdded,firstPlot,c,ncol = 1, rel_heights = c(3,3,1.5))
 
-# Export mousePlot as pdf with ggsave
 
-cowplot::ggsave2("mouseDiseaseOverlapPlot.pdf",mousePlot,width = 10,height = 12)
+# Compute the summary stats constraints for the different genesets
+otGeneticsLOF <- constraintData$`lof.z_score`[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+impcLOF <- constraintData$`lof.z_score`[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+
+otGeneticsMissense <- constraintData$`mis.z_score`[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+impcMissense <- constraintData$`mis.z_score`[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+
+summary(otGeneticsLOF)
+summary(impcLOF)
+
+summary(otGeneticsMissense)
+summary(impcMissense)
+
+# Plot the distribution of the constraint scores for the two datasets
+
+ttestLOF <- t.test(otGeneticsLOF,impcLOF)
+ttestMissense <- t.test(otGeneticsMissense,impcMissense)
+
+constraintPlotLOF <- ggplot() + 
+                geom_density(aes(x = otGeneticsLOF, fill = "OT Genetics (L2G > 0.4)"), alpha = 0.5) +
+                geom_density(aes(x = impcLOF, fill = "IMPC (Score > 0.65)"), alpha = 0.5) +
+                labs(title = "Distribution of LOF Constraint Z-Scores",
+                      subtitle = paste0("P-value for difference in means: ",format(ttestLOF$p.value))) + 
+                xlab("LOF Constraint Score") + 
+                ylab("Density") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Genes in:")) +
+                # Remove the legend
+                theme(legend.position = "none")
+
+constraintPlotMissense <- ggplot() +
+                geom_density(aes(x = otGeneticsMissense, fill = "OT Genetics (L2G > 0.4)"), alpha = 0.5) +
+                geom_density(aes(x = impcMissense, fill = "IMPC (Score > 0.65)"), alpha = 0.5) +
+                labs(title = "Distribution of Missense Constraint Z-Scores",
+                      subtitle = paste0("P-value for difference in means: ",format(ttestMissense$p.value))) + 
+                xlab("Missense Constraint Score") + 
+                ylab("Density") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Genes in:"))+
+                # Remove the legend
+                theme(legend.position = "none")
+
+
+# Comapare gene types
+otGeneticsGeneTypes <- constraintData$`Chromosome`[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+impcGeneTypes <- constraintData$`Chromosome`[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+
+# Make a barplot fith fill genetype and the x axis origin of the genes
+
+chromosomeDF <- data.frame(geneType = c(otGeneticsGeneTypes,impcGeneTypes),
+                         origin = c(rep("OT Genetics (L2G > 0.4)",length(otGeneticsGeneTypes)),
+                                     rep("IMPC (Score > 0.65)",length(impcGeneTypes))))
+
+
+chromosomePlot <- ggplot(chromosomeDF, aes(x = origin, fill = geneType)) +
+                geom_bar(position = "fill") +
+                ggtitle("Proportion of Genes by Chromosome") + 
+                ylab("Proportion of Genes") + 
+                xlab("") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Chromosome")) +
+                # Better color palette that has more then 22 colors
+                scale_fill_manual(values = c("#FF0000","#0000FF","#00FF00","#FF00FF","#FFFF00","#00FFFF","#FFA500","#A52A2A","#800080","#008000","#808000",
+                                              "#008080","#800000","#000080","#000000","#FFC0CB","#FF4500","#FFD700","#FF69B4","#FF6347","#FF1493","#FF00FF"))
+
+# Add the length of the gene by using Gene start (bp) and Gene end (bp)
+constraintData <- constraintData %>% 
+         mutate(geneLength = abs(`Gene end (bp)` - `Gene start (bp)`))
+
+
+# Plot the distribution of gene lengths for the two datasets
+
+otGeneticsGeneLength <- constraintData$geneLength[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+impcGeneLength <- constraintData$geneLength[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+
+ttestGeneLength <- t.test(otGeneticsGeneLength,impcGeneLength)
+
+geneLengthPlot <- ggplot() + 
+                geom_density(aes(x = otGeneticsGeneLength, fill = "OT Genetics (L2G > 0.4)"), alpha = 0.5) +
+                geom_density(aes(x = impcGeneLength, fill = "IMPC (Score > 0.65)"), alpha = 0.5) +
+                labs(title = "Distribution of Gene Lengths",
+                      subtitle = paste0("P-value for difference in means: ",format(ttestGeneLength$p.value))) + 
+                xlab("Gene Length (bp)") + 
+                ylab("Density") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Genes in:")) +
+                scale_x_log10()
+
+
+# Add depmapmedian plot
+
+otGeneticsDepMap <- constraintData$medianDep[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+impcDepMap <- constraintData$medianDep[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+
+summary(otGeneticsDepMap)
+summary(impcDepMap)
+
+table(otGeneticsDepMap > 0.5)/length(otGeneticsDepMap)
+table(impcDepMap > 0.5)/length(impcDepMap)
+
+ttestDepMap <- t.test(otGeneticsDepMap,impcDepMap)
+
+depMapPlot <- ggplot() + 
+                geom_density(aes(x = otGeneticsDepMap, fill = "OT Genetics (L2G > 0.4)"), alpha = 0.5) +
+                geom_density(aes(x = impcDepMap, fill = "IMPC (Score > 0.65)"), alpha = 0.5) +
+                labs(title = "Distribution of DepMap Dependency Scores",
+                      subtitle = paste0("P-value for difference in means: ",format(ttestDepMap$p.value))) + 
+                xlab("Probility of Being Dependant") + 
+                ylab("Density") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Genes in:"))
+
+# Add protein abundance plot
+
+otGeneticsProteinAbundance <- constraintData$abundance[which(constraintData$`Gene stable ID` %in% vennData[[1]])]
+impcProteinAbundance <- constraintData$abundance[which(constraintData$`Gene stable ID` %in% vennData[[2]])]
+
+ttestProteinAbundance <- t.test(log1p(otGeneticsProteinAbundance),log1p(impcProteinAbundance))
+
+summary(otGeneticsProteinAbundance)
+
+summary(impcProteinAbundance)
+
+proteinAbundancePlot <- ggplot() + 
+                geom_density(aes(x = otGeneticsProteinAbundance, fill = "OT Genetics (L2G > 0.4)"), alpha = 0.5) +
+                geom_density(aes(x = impcProteinAbundance, fill = "IMPC (Score > 0.65)"), alpha = 0.5) +
+                labs(title = "Distribution of Protein Abundance",
+                      subtitle = paste0("P-value for difference in means: ",format(ttestProteinAbundance$p.value))) + 
+                xlab("Protein Abundance") + 
+                ylab("Density") + 
+                theme_classic() +
+                guides(fill=guide_legend(title="Genes in:")) + 
+                scale_x_log10()
+
+depmapAndProteinPlots <- cowplot::plot_grid(depMapPlot,proteinAbundancePlot,ncol = 2,rel_widths = c(3,3))
+depmapAndProteinPlots
+
+constraintPlot <- cowplot::plot_grid(constraintPlotLOF,constraintPlotMissense,geneLengthPlot,ncol = 3,rel_widths = c(3,3,5))
+
+mousePlot <- cowplot::plot_grid(geneVennplotEmptyAdded,firstPlot,constraintPlot,ncol = 1, rel_heights = c(3,3,1.5))
+
+
+
+
+
+
+
+
+
+
+
+
+# Export mousePlot as pdf with ggsave
+#mousePlot
+#cowplot::ggsave2("mouseDiseaseOverlapPlotInDirectNew.pdf",mousePlot,width = 14,height = 14)
+
+
 
 
 ```

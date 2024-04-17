@@ -16,6 +16,28 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
 ```
 
 
+```{r compare after refactor}
+
+load("/home/gummi/netprop/results/RareAndMouse/netpropDistanceRes_assocMouseGWAS_noNorm_spearman.rdata")
+resFromBefore <- res
+load("/home/gummi/netprop/results/RareAndMouseMultiPairlist/netpropDistanceRes_assocMouseGWASRelatedSet_jsd_spearman.rdata")
+resFromAfter <- res
+
+resFromBefore[["summaryAll"]]
+resFromAfter[["summaryAll"]]
+
+resFromBefore[["summaryRelated"]]
+resFromAfter[["summaryRelated"]]
+
+resFromBefore[["summaryRandom"]]
+resFromAfter[["summaryRandom"]]
+
+
+resFromBefore[["AUROC"]]
+resFromAfter[["AUROC"]]
+
+```
+
 ```{r } 
 masterRes[["assocMouseGWAS"]][["noNorm"]][["spearman"]][["summaryRelated"]]
 masterRes[["assocMouseGWAS"]][["noNorm"]][["spearman"]][["summaryRandom"]]

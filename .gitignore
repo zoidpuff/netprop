@@ -45,3 +45,5 @@ internalStarted.txt
 *.pdf
 *.rdata
 *.svg
+*.html
+/resultsWasInCode
