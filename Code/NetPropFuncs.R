@@ -749,7 +749,9 @@ computeDistance <- function(matrix, distFuncSettings) {
             val <- unname(philentropy::JSD(matrix))
             return(sqrt(as.dist(matrix(c(0,val,val,0),nrow = 2))))
         } else {
-            return(sqrt(as.dist(philentropy::JSD(matrix))))
+            temp <- sqrt(as.dist(philentropy::JSD(matrix)))
+            attr(temp,"Labels") <- rownames(matrix)
+            return(temp)
         }
     # Just the default distance function in R with p serving as the minkowski dist parameter
     } else {

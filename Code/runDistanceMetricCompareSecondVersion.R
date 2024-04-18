@@ -36,15 +36,16 @@ intGraph <- delete_vertices(intGraph, which(degree(intGraph) == 0))
 
 ########### LOAD ASSOCIATION DATA ###########
 
-load("/home/gummi/netprop/data/shortestPATHSDiseases.RData")
+load(paste0(netPropPath,"/data/shortestPATHSDiseasesFilt.RData"))
 
 
 assocDataBySourceDirectFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirectFiltered.csv"), stringsAsFactors = FALSE)
 assocDataBySourceDirIndiMergedFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered.csv"), stringsAsFactors = FALSE)
 
-allPossibleDiseases <- unique(c(assocDataBySourceDirectFiltered$diseaseId,assocDataBySourceDirIndiMergedFiltered$diseaseId))
-intersectionOfDisease <- intersect(allPossibleDiseases,attr(shortestPATHS,"Labels"))
-shortestPATHS <- as.dist(as.matrix(shortestPATHS)[intersectionOfDisease,intersectionOfDisease])
+#allPossibleDiseases <- unique(c(assocDataBySourceDirectFiltered$diseaseId,assocDataBySourceDirIndiMergedFiltered$diseaseId))
+#intersectionOfDisease <- intersect(allPossibleDiseases,attr(shortestPATHS,"Labels"))
+#shortestPATHS <- as.dist(as.matrix(shortestPATHS)[intersectionOfDisease,intersectionOfDisease])
+
 
 
 # loads diseaseDF object
@@ -54,19 +55,19 @@ relationshipsAll <- read.csv(paste0(netPropPath,"/relationshipsWithNames.csv"), 
 
 # Create a list of the association data
 
-assocDataList <- list("assocDataBySourceDirectFiltered" = assocDataBySourceDirectFiltered,
+assocDataList <- list(#"assocDataBySourceDirectFiltered" = assocDataBySourceDirectFiltered,
                       "assocDataBySourceDirIndiMergedFiltered" = assocDataBySourceDirIndiMergedFiltered)
 
 # Create a list of distance metrics
 distanceMetricList <- list(
-  "kendall" = list("method" = "kendall"),
-  "euclidean" = list("method" = "euclidean","returnDist" = NA),
-  "manhattan" = list("method" = "manhattan","returnDist" = NA),
-  "minkowski05" = list("method" = "minkowski","returnDist" = NA,"p" = 0.5),
-  "cosine" = list("method" = "cosine"),
-  "cosineSharp2" = list("method" = "cosine","p" = 2),
-  "pearson" = list("method" = "pearson"),	
-  "spearman" = list("method" = "spearman"),
+ # "kendall" = list("method" = "kendall"),
+ # "euclidean" = list("method" = "euclidean","returnDist" = NA),
+ # "manhattan" = list("method" = "manhattan","returnDist" = NA),
+ # "minkowski05" = list("method" = "minkowski","returnDist" = NA,"p" = 0.5),
+ # "cosine" = list("method" = "cosine"),
+ # "cosineSharp2" = list("method" = "cosine","p" = 2),
+ # "pearson" = list("method" = "pearson"),	
+ # "spearman" = list("method" = "spearman"),
   "jsd" = list("method" = "jsd")
 )
 
@@ -94,7 +95,7 @@ preprocessList <- list(c("0","FALSE","FALSE"),
 #PREPROCESS <- preprocessList[[1]]
 #distanceMetric <- names(distanceMetricList)[9]
 
-
+gc()
 # Run the experiments in foreach loop
 for(dataset in names(assocDataList)){
     for(NORMFUNC in normList) {
@@ -113,42 +114,46 @@ for(dataset in names(assocDataList)){
             
             relationships <- relationshipsAll %>% filter(term1 %in% rownames(netPropDataFrame) & term2 %in% rownames(netPropDataFrame))
             relationships <- as.matrix(relationships[,c("term1","term2")])
-
+            gc()
             temp <- foreach(PREPROCESS = preprocessList,.combine = list) %:%
                         foreach(distanceMetric = names(distanceMetricList), .combine = list, .packages = c('dplyr',"ggplot2"),.errorhandling = "remove") %dopar% {
-                            # Preprocess the netprop data
-                              
-                            netPropDataFramePP <- preprocessNetPropDF(netPropDataFrame, as.numeric(PREPROCESS[1]), 
-                                                                                        as.logical(PREPROCESS[2]), 
-                                                                                        as.logical(PREPROCESS[3]))
-                            
-                            if(any(0>as.matrix(netPropDataFramePP))){return(NULL)}
+                            #for(PREPROCESS in preprocessList){
+                             #   for(distanceMetric in names(distanceMetricList)){
+                                    # Preprocess the netprop data
+                                    netPropDataFramePP <- preprocessNetPropDF(netPropDataFrame, as.numeric(PREPROCESS[1]), 
+                                                                                                as.logical(PREPROCESS[2]), 
+                                                                                                as.logical(PREPROCESS[3]))
+                                    
+                                    if(any(0>as.matrix(netPropDataFramePP))){return(NULL)}
 
-                        #for(distanceMetric in names(distanceMetricList)){
-                            cat(file="internalStarted.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
-                            res <- compareDistanceMetric(as.matrix(netPropDataFramePP),
-                                    computeDistance,
-                                    distanceMetricList[[distanceMetric]],	
-                                    relationships,
-                                    8,
-                                    TRUE,
-                                    diseaseDF,
-                                    FALSE,
-                                    shortestPATHS)
+                                #for(distanceMetric in names(distanceMetricList)){
+                                    cat(file="internalStarted.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
+                                    res <- compareDistanceMetric(as.matrix(netPropDataFramePP),
+                                            computeDistance,
+                                            distanceMetricList[[distanceMetric]],	
+                                            relationships,
+                                            8,
+                                            TRUE,
+                                            diseaseDF,
+                                            FALSE,
+                                            shortestPATHS)
 
-                                    save(res, file = paste0(netPropPath,
-                                        "/results/compareDist/netpropDistanceMetricCompare_",
-                                        dataset,"_",
-                                        NORMFUNC[[3]],"_",
-                                        paste0(PREPROCESS,collapse = "_"),
-                                        "_",distanceMetric,".rdata"))
-                            
-                            cat(file="internalFinished.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
+                                            save(res, file = paste0(netPropPath,
+                                                "/results/compareDist/netpropDistanceMetricCompare_",
+                                                dataset,"_",
+                                                NORMFUNC[[3]],"_",
+                                                paste0(PREPROCESS,collapse = "_"),
+                                                "_",distanceMetric,".rdata"))
+                                    
+                                    gc()
+                                    
+                                    cat(file="internalFinished.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
 
-            
+                               # }
         }
     }
 }
+
 
 
 
