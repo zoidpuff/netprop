@@ -60,14 +60,14 @@ assocDataList <- list(#"assocDataBySourceDirectFiltered" = assocDataBySourceDire
 
 # Create a list of distance metrics
 distanceMetricList <- list(
- # "kendall" = list("method" = "kendall"),
- # "euclidean" = list("method" = "euclidean","returnDist" = NA),
- # "manhattan" = list("method" = "manhattan","returnDist" = NA),
- # "minkowski05" = list("method" = "minkowski","returnDist" = NA,"p" = 0.5),
- # "cosine" = list("method" = "cosine"),
- # "cosineSharp2" = list("method" = "cosine","p" = 2),
- # "pearson" = list("method" = "pearson"),	
- # "spearman" = list("method" = "spearman"),
+  "kendall" = list("method" = "kendall"),
+  "euclidean" = list("method" = "euclidean","returnDist" = NA),
+  "manhattan" = list("method" = "manhattan","returnDist" = NA),
+  "minkowski05" = list("method" = "minkowski","returnDist" = NA,"p" = 0.5),
+  "cosine" = list("method" = "cosine"),
+  "cosineSharp2" = list("method" = "cosine","p" = 2),
+  "pearson" = list("method" = "pearson"),	
+  "spearman" = list("method" = "spearman"),
   "jsd" = list("method" = "jsd")
 )
 
@@ -120,6 +120,7 @@ for(dataset in names(assocDataList)){
                             #for(PREPROCESS in preprocessList){
                              #   for(distanceMetric in names(distanceMetricList)){
                                     # Preprocess the netprop data
+                                    if(NORMFUNC[[3]] %in% c("noNorm","ECnormLog") & distanceMetric != "jsd"){return(NULL)}
                                     netPropDataFramePP <- preprocessNetPropDF(netPropDataFrame, as.numeric(PREPROCESS[1]), 
                                                                                                 as.logical(PREPROCESS[2]), 
                                                                                                 as.logical(PREPROCESS[3]))

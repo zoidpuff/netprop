@@ -19,13 +19,27 @@ seedVector <- rep(1, vcount(intGraph))
 
 ECvec <- igraph::page_rank(intGraph, directed = FALSE, damping = 1, personalized = seedVector,algo="arpack")
 
+assocDataBySourceDirectFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirectFiltered.csv"), stringsAsFactors = FALSE)
+assocDataBySourceDirIndiMergedFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered.csv"), stringsAsFactors = FALSE)
+
+seedVecsDirect <- runNetProp(network = intGraph,
+                    assocData = assocDataBySourceDirectFiltered,
+                    cutoff = c("value" = 0.5, "number" = 5),
+                    binarize = TRUE,
+                    damping = 0.85,
+                    NormFunc = NULL,
+                    settingsForNormFunc = NULL,
+                    returnSeedVec = TRUE)
+
+<- rowSums(seedVecsDirect)
+
 ```
 
 ```{r }
 
 # Compute average network propagation vector by using random seeds and compare the distance to the EC vector for every iteration 
 
-nIter <- 1000
+nIter <- 100
 
 avgVec <- rep(1/vcount(intGraph), vcount(intGraph))
 
@@ -35,13 +49,13 @@ for(i in 1:nIter){
     seedVector <- rep(0, vcount(intGraph))
     seedVector[sample(1:vcount(intGraph), abs(ceiling(rnorm(1,150,50))))] <- 1	
     
-    tempVec <- igraph::page_rank(intGraph, directed = FALSE, personalized = seedVector)$vector 
+    tempVec <- igraph::page_rank(intGraph,directed = FALSE, personalized = seedVector)$vector 
 
     # Update the average vector
     avgVec <- avgVec + (tempVec - avgVec)/i
 
     # Compute the distance between the EC vector and the average vector
-    distanceVec[i] <- as.numeric(dist(rbind(avgVec, ECvec$vector), method = "euclidean"))
+    distanceVec[i] <- as.numeric(dist(rbind(avgVec, ECvec$vector), method = "manhattan"))
     print(distanceVec[i])
 
 }
@@ -50,11 +64,20 @@ for(i in 1:nIter){
 ```
 
 ```{r }
-avg <- 0
-vals <- sample(1:100)
-for(i in 1:100) {
-    avg <- avg + (vals[i] - avg)/i
-    print(avg)
+
+seedVec <- rep(1/vcount(intGraph), vcount(intGraph))
+
+nIter <- 100
+
+for(i in seq(0.01,0.99,0.01)){
+    
+    res <- igraph::page_rank(intGraph, damping = i,directed = FALSE, personalized = seedVector)$vector 
+
+    # Compute the distance between the EC vector and the average vector
+    distanceVec[i*100] <- as.numeric(dist(rbind(res, ECvec$vector), method = "manhattan"))
+    print(distanceVec[i*100])
+
 }
+
 
 ```
