@@ -46,6 +46,19 @@ assocDataBySourceDirIndiMergedFiltered <- read.csv(paste0(netPropPath,"/data/ass
 #intersectionOfDisease <- intersect(allPossibleDiseases,attr(shortestPATHS,"Labels"))
 #shortestPATHS <- as.dist(as.matrix(shortestPATHS)[intersectionOfDisease,intersectionOfDisease])
 
+referenceVec <- read.csv(paste0(netPropPath,"/data/averageVecCombined.csv"))
+
+convergeSuccess <- "notTrue"
+counter <- 0
+while(!is.logical(convergeSuccess) & counter < 100) {
+    res <- igraph::page_rank(intGraph, directed = FALSE, damping = 1, personalized = rep(1,length(V(intGraph))),algo="arpack")
+    convergeSuccess <- all.equal(res$value,1)
+    counter <- counter + 1
+}
+
+if(convergeSuccess != TRUE) {
+    stop("Failed to converge")
+} 
 
 
 # loads diseaseDF object
@@ -55,7 +68,7 @@ relationshipsAll <- read.csv(paste0(netPropPath,"/relationshipsWithNames.csv"), 
 
 # Create a list of the association data
 
-assocDataList <- list(#"assocDataBySourceDirectFiltered" = assocDataBySourceDirectFiltered,
+assocDataList <- list("assocDataBySourceDirectFiltered" = assocDataBySourceDirectFiltered,
                       "assocDataBySourceDirIndiMergedFiltered" = assocDataBySourceDirIndiMergedFiltered)
 
 # Create a list of distance metrics
@@ -73,8 +86,8 @@ distanceMetricList <- list(
 
 
 normList <- list(list(NULL,NULL,"noNorm"),
-               # list(ECnormalize,list("logtransform" = FALSE),"ECnorm"),
-                list(ECnormalize,list("logtransform" = TRUE),"ECnormLog"),
+                list(ECnormalize,list("logtransform" = TRUE,"refVec" =res$vector ),"ECnormLog"),
+                list(ECnormalize,list("logtransform" = TRUE,"refVec" =referenceVec$avgVec ),"AverageVecLOR"),
                # list(permuteTestNormalize,list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1),"permuteNorm"),
                 list(permuteTestParalell,list("nSamples" = 200,"ncore" = no_cores),"permuteNormDegree")
 )
@@ -104,7 +117,7 @@ for(dataset in names(assocDataList)){
 
             netPropDataFrame <- runNetProp(network = intGraph,
                     assocData = assocDataList[[dataset]],
-                    cutoff = c("value" = 0.5, "number" = 5),
+                    cutoff = c("value" = 0.1, "number" = 5),
                     binarize = TRUE,
                     damping = 0.85,
                     NormFunc = NORMFUNC[[1]],
@@ -120,7 +133,7 @@ for(dataset in names(assocDataList)){
                             #for(PREPROCESS in preprocessList){
                              #   for(distanceMetric in names(distanceMetricList)){
                                     # Preprocess the netprop data
-                                    if(NORMFUNC[[3]] %in% c("noNorm","ECnormLog") & distanceMetric != "jsd"){return(NULL)}
+                                   # if(NORMFUNC[[3]] %in% c("noNorm","ECnormLog") & distanceMetric != "jsd"){return(NULL)}
                                     netPropDataFramePP <- preprocessNetPropDF(netPropDataFrame, as.numeric(PREPROCESS[1]), 
                                                                                                 as.logical(PREPROCESS[2]), 
                                                                                                 as.logical(PREPROCESS[3]))

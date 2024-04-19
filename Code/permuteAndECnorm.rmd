@@ -24,43 +24,140 @@ assocDataBySourceDirIndiMergedFiltered <- read.csv(paste0(netPropPath,"/data/ass
 
 seedVecsDirect <- runNetProp(network = intGraph,
                     assocData = assocDataBySourceDirectFiltered,
-                    cutoff = c("value" = 0.5, "number" = 5),
+                    cutoff = c("value" = 0.1, "number" = 1),
                     binarize = TRUE,
                     damping = 0.85,
                     NormFunc = NULL,
                     settingsForNormFunc = NULL,
                     returnSeedVec = TRUE)
 
-<- rowSums(seedVecsDirect)
+nSeedsDir <- rowSums(seedVecsDirect)
+
+# Remove any zeros
+
+nSeedsDir <- nSeedsDir[nSeedsDir != 0]
+
+seedVecsIndir <- runNetProp(network = intGraph,
+                    assocData = assocDataBySourceDirIndiMergedFiltered,
+                    cutoff = c("value" = 0.1, "number" = 1),
+                    binarize = TRUE,
+                    damping = 0.85,
+                    NormFunc = NULL,
+                    settingsForNormFunc = NULL,
+                    returnSeedVec = TRUE)
+
+nSeedsIndir <- rowSums(seedVecsIndir)
+
+# Remove any zeros
+
+nSeedsIndir <- nSeedsIndir[nSeedsIndir != 0]
+
+summary(nSeedsDir)
+summary(nSeedsIndir)
+
+
 
 ```
 
 ```{r }
 
+# Get the indices of the genes that appear in the seed vectors
+seedInds <- which(colSums(seedVecsDirect) != 0)
+
+
 # Compute average network propagation vector by using random seeds and compare the distance to the EC vector for every iteration 
-
-nIter <- 100
-
 avgVec <- rep(1/vcount(intGraph), vcount(intGraph))
 
-distanceVec <- rep(0, nIter)
-
-for(i in 1:nIter){
+i <- 1
+while(i < 10000){
     seedVector <- rep(0, vcount(intGraph))
-    seedVector[sample(1:vcount(intGraph), abs(ceiling(rnorm(1,150,50))))] <- 1	
+    seedVector[sample(seedInds,sample(nSeedsDir,1))] <- 1	
     
     tempVec <- igraph::page_rank(intGraph,directed = FALSE, personalized = seedVector)$vector 
+    
+    #Save the old
+    avgVecOld <- avgVec
 
     # Update the average vector
     avgVec <- avgVec + (tempVec - avgVec)/i
 
     # Compute the distance between the EC vector and the average vector
-    distanceVec[i] <- as.numeric(dist(rbind(avgVec, ECvec$vector), method = "manhattan"))
-    print(distanceVec[i])
+    if(i %% 100 == 0){
+        distance <- as.numeric(dist(rbind(avgVec, ECvec$vector), method = "manhattan"))
+        delta <- as.numeric(dist(rbind(avgVec, avgVecOld), method = "manhattan"))
+        print(paste0("Iteration: ", i, " Distance: ", distance, " Delta: ", delta))
+    }
+    i <- i + 1
 
 }
 
+# Make a dataframe with the gene names and the average vector
+avgVecDF <- data.frame(gene = V(intGraph)$name, avgVec = avgVec)
 
+# Save the average vector
+write.csv(avgVecDF, paste0(netPropPath,"/data/averageVecDirect.csv"), row.names = FALSE)
+
+```
+
+
+```{r }
+# Do the same thing for the indirect associations
+# Get the indices of the genes that appear in the seed vectors
+seedInds <- which(colSums(seedVecsIndir) != 0)
+
+# Compute average network propagation vector by using random seeds and compare the distance to the EC vector for every iteration 
+avgVec <- rep(1/vcount(intGraph), vcount(intGraph))
+
+i <- 1
+while(i < 10000){
+    seedVector <- rep(0, vcount(intGraph))
+    seedVector[sample(seedInds,sample(nSeedsIndir,1))] <- 1	
+    
+    tempVec <- igraph::page_rank(intGraph,directed = FALSE, personalized = seedVector)$vector 
+    
+    #Save the old
+    avgVecOld <- avgVec
+
+    # Update the average vector
+    avgVec <- avgVec + (tempVec - avgVec)/i
+
+    # Compute the distance between the EC vector and the average vector
+    if(i %% 100 == 0){
+        distance <- as.numeric(dist(rbind(avgVec, ECvec$vector), method = "manhattan"))
+        delta <- as.numeric(dist(rbind(avgVec, avgVecOld), method = "manhattan"))
+        print(paste0("Iteration: ", i, " Distance: ", distance, " Delta: ", delta))
+    }
+    i <- i + 1
+
+}
+
+# Make a dataframe with the gene names and the average vector
+avgVecDF <- data.frame(gene = V(intGraph)$name, avgVec = avgVec)
+
+# Save the average vector
+write.csv(avgVecDF, paste0(netPropPath,"/data/averageVecInDirect.csv"), row.names = FALSE)
+
+```
+
+
+
+```{r }
+# Compare the two average vectors
+avgVecDirect <- read.csv(paste0(netPropPath,"/data/averageVecDirect.csv"), stringsAsFactors = FALSE)
+avgVecIndirect <- read.csv(paste0(netPropPath,"/data/averageVecInDirect.csv"), stringsAsFactors = FALSE)
+
+# Compute the distance between the two average vectors
+distance <- as.numeric(dist(rbind(avgVecDirect$avgVec, avgVecIndirect$avgVec, ECvec$vector), method = "manhattan"))
+
+# Create a vector that is the average of the two vectors and compare the distance to the EC vector
+avgVecCombined <- (avgVecDirect$avgVec + avgVecIndirect$avgVec)/2
+
+distanceCombined <- as.numeric(dist(rbind(avgVecCombined, ECvec$vector), method = "manhattan"))
+
+sum(avgVecCombined)
+
+# Save the combined vector
+write.csv(data.frame(gene = V(intGraph)$name, avgVec = avgVecCombined), paste0(netPropPath,"/data/averageVecCombined.csv"), row.names = FALSE)
 ```
 
 ```{r }

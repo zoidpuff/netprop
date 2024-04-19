@@ -154,19 +154,24 @@ avgAUROC <- function(network, seedList, nRep, recoverSizeVec, binarize = TRUE,No
 
 ECnormalize <- function(network,seedVector,rawNetPropScores,settings) {
         # Like they do here https://www.frontiersin.org/articles/10.3389/fgene.2019.00004/full#h5
-        convergeSuccess <- "notTrue"
-        counter <- 0
-        while(!is.logical(convergeSuccess) & counter < 100) {
-            ecScore <- igraph::page_rank(network, directed = FALSE, damping = 1, personalized = seedVector,algo="arpack")
-            convergeSuccess <- all.equal(ecScore$value,1)
-            counter <- counter + 1
+        if("refVec" %in% names(settings)) {
+            ecScore <- settings$refVec
+        } else {
+            convergeSuccess <- "notTrue"
+            counter <- 0
+            while(!is.logical(convergeSuccess) & counter < 100) {
+                res <- igraph::page_rank(network, directed = FALSE, damping = 1, personalized = seedVector,algo="arpack")
+                convergeSuccess <- all.equal(res$value,1)
+                counter <- counter + 1
+            }
+
+            if(convergeSuccess != TRUE) {
+                print("Failed to converge")
+                return(rep(NA,length(rawNetPropScores)))
+            } 
+
+            ecScore <- res$vector
         }
-
-        if(convergeSuccess != TRUE) {
-            print("Failed to converge")
-            return(rep(NA,length(rawNetPropScores)))
-        } 
-
         if(settings$logtransform) {
 
             # Choose an epsilon value
@@ -174,12 +179,12 @@ ECnormalize <- function(network,seedVector,rawNetPropScores,settings) {
             
             # Add epsilon to avoid log(0) and apply logarithmic transformation for numerical stability
             logTransformedScores <- log(rawNetPropScores + epsilon)
-            logTransformedECScores <- log(ecScore$vector + epsilon)
+            logTransformedECScores <- log(ecScore + epsilon)
 
             return(logTransformedScores - logTransformedECScores)
 
         } else {
-            return(rawNetPropScores/ecScore$vector)
+            return(rawNetPropScores/ecScore)
         }
     
 }
