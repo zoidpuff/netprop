@@ -64,6 +64,7 @@ if(convergeSuccess != TRUE) {
 # loads diseaseDF object
 load(paste0(netPropPath,"/data/diseasesNew.rdata"))
 
+
 relationshipsAll <- read.csv(paste0(netPropPath,"/relationshipsWithNames.csv"), stringsAsFactors = FALSE)
 
 # Create a list of the association data
@@ -138,7 +139,7 @@ for(dataset in names(assocDataList)){
                                                                                                 as.logical(PREPROCESS[2]), 
                                                                                                 as.logical(PREPROCESS[3]))
                                     
-                                    if(any(0>as.matrix(netPropDataFramePP))){return(NULL)}
+                                    if(!any(0>as.matrix(netPropDataFramePP))){return(NULL)}
 
                                 #for(distanceMetric in names(distanceMetricList)){
                                     cat(file="internalStarted.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	

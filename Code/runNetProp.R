@@ -1,82 +1,87 @@
-
+netPropPath <- '/home/gummi/netprop'
+netPropPath <- "/cluster/home/gmagnusson/netprop"
 library(igraph)
 library(dplyr)
-
-netpropPath <- "/cluster/home/gmagnusson/netprop"
-
-# Load the netprop functions
-source(paste0(netpropPath,"/Code/NetPropFuncs.R"))
-
-# Load the network data
-
-pathToCSV <- paste0(netpropPath,"/data/interactionAll.csv")
-
-intData <- read.csv(pathToCSV, stringsAsFactors = FALSE)
-
-intDataFilt  <- intData %>% filter(!(sourceDatabase == "string" & scoring <= 0.4)) # 0.4 only for stringdb
-
-# Create an unweighted graph from the data
-intGraph <- graph.data.frame(intDataFilt[,c("targetA","targetB" )], directed = FALSE)
-rm(intData, intDataFilt)
-
-# Remove any self loops and redundant edges
-intGraph <- simplify(intGraph, remove.multiple = TRUE, remove.loops = TRUE)
-
-# Load the association data and filter for EFO diseases that have at least 10 seed genes with score >= 0.5
-
-pathToAssocCSV <- paste0(netpropPath,"/data/associationByOverallDirect.csv")
-assocData <- read.csv(pathToAssocCSV, stringsAsFactors = FALSE)
-assocDataFilt10 <- assocData %>% 
-                            filter(stringr::str_split(diseaseId, pattern = "_", simplify = TRUE)[,1] == "EFO") %>%
-                            filter(score >= 0.5) %>% 
-                            group_by(diseaseId) %>% 
-                            filter(n() >= 10) %>%
-                            ungroup()
-
-rm(assocData)
-
-# Load the EFO to description mapping
-diseaseMappings <- read.csv(paste0(netpropPath,"/data/phenotypeMapping.csv"), stringsAsFactors = FALSE) %>%
-                    filter(id %in% unique(assocDataFilt10$diseaseId))
-
-print(paste0("Number of traits:", length(unique(assocDataFilt10$diseaseId))))
-
-print("Starting to run netprop")
-
-settingsPerm1 <- list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1)
-settingsPerm2 <- list("nSamples" = 100, "perserveDegree" = TRUE, "degreeSampleSmoothing" = 3, "minBucketSize" = 1)
-
-
-normList <- list(list(NULL,NULL,"noNorm"),
-                list(ECnormalize,list("logtransform" = FALSE),"ECnorm"),
-                list(ECnormalize,list("logtransform" = TRUE),"ECnormLog"),
-                list(permuteTestNormalize,settingsPerm1,"permuteNorm"),
-                list(permuteTestNormalize,settingsPerm2,"permuteNormDegree"))
-
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
 
 library(doParallel)
 library(foreach)
 
 # Register the parallel backend
-no_cores <- min(60, detectCores())
+no_cores <- min(50, detectCores())
 cl <- makeCluster(no_cores)
+
 registerDoParallel(cl)
+
+
+########### LOAD GRAPH DATA ###########
+intData <- read.csv(paste0(netPropPath,"/data/interactionAll.csv"), stringsAsFactors = FALSE)
+
+# Filter out any row that have scoring less then 0.75 (perhaps other values should be tested)
+
+intDataFilt  <- intData %>% filter(!(sourceDatabase == "string" & scoring <= 0.4)) # 0.4 only for stringdb
+
+rm(intData)
+
+intGraph <- graph.data.frame(intDataFilt[,c("targetA","targetB" )], directed = FALSE)
+
+# Remove any self loops and redundant edges
+
+intGraph <- simplify(intGraph, remove.multiple = TRUE, remove.loops = TRUE)
+
+# remove orphan nodes
+
+intGraph <- delete_vertices(intGraph, which(degree(intGraph) == 0))
+
+
+########### LOAD ASSOCIATION DATA ###########
+
+assocDataBySourceDirIndiMergedFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered.csv"), stringsAsFactors = FALSE)
+
+referenceVec <- read.csv(paste0(netPropPath,"/data/averageVecCombined.csv"))
+
+# loads diseaseDF object
+load(paste0(netPropPath,"/data/diseasesNew.rdata"))
+
+idToName <- setNames(diseaseDF$name, diseaseDF$id)
+
+rm(diseaseDF)
+
+convergeSuccess <- "notTrue"
+counter <- 0
+while(!is.logical(convergeSuccess) & counter < 100) {
+    res <- igraph::page_rank(intGraph, directed = FALSE, damping = 1, personalized = rep(1,length(V(intGraph))),algo="arpack")
+    convergeSuccess <- all.equal(res$value,1)
+    counter <- counter + 1
+}
+
+if(convergeSuccess != TRUE) {
+    stop("Failed to converge")
+} 
+
+
+normList <- list(list(NULL,NULL,"noNorm"),
+                list(ECnormalize,list("logtransform" = TRUE,"refVec" =res$vector ),"ECnormLog"),
+                list(ECnormalize,list("logtransform" = TRUE,"refVec" =referenceVec$avgVec ),"AverageVecLOR"),
+               # list(permuteTestNormalize,list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1),"permuteNorm"),
+                list(permuteTestParalell,list("nSamples" = 200,"ncore" = 0),"permuteNormDegree")
+)
+
+
 
 for(BINARIZE in c(TRUE)) {
     for(NORMFUNC in normList) {
-        if(NORMFUNC[[3]] != "permuteNormDegree") {next}
         print(paste0("Started binarize: ", BINARIZE, " NormFunc: ", NORMFUNC[[3]] ))
-
         # Replace the outer for loop with a foreach loop
-        aurocs <- foreach(trait = unique(assocDataFilt10$diseaseId), .combine = 'rbind', .packages = 'dplyr',.errorhandling = "remove") %dopar% {
+        aurocs <- foreach(trait = unique(assocDataBySourceDirIndiMergedFiltered$diseaseId), .combine = 'rbind', .packages = 'dplyr',.errorhandling = "remove") %dopar% {
 
-            assocDataFiltTemp <- assocDataFilt10 %>% filter(diseaseId == trait)
+            assocDataFiltTemp <- assocDataBySourceDirIndiMergedFiltered %>% filter(diseaseId == trait)
 
-            seedsInd <- assocDataFiltTemp$score >= 0.5
+            seedsInd <- assocDataFiltTemp$score >= 0.1
 
             seedList <- list(assocDataFiltTemp$targetId, assocDataFiltTemp$score, seedsInd)
 
-            diseaseName <- diseaseMappings[which(diseaseMappings$id == trait),4] 
+            diseaseName <- unname(idToName[trait])
             if(length(diseaseName) == 0) {diseaseName <- NA}
 
             c("trait" = trait,"name" = diseaseName, 
