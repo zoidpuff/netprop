@@ -97,7 +97,7 @@ for(BINARIZE in c(TRUE)) {
         print(paste0("Finished binarize: ", BINARIZE, " NormFunc: ", NORMFUNC[[3]] ))
         binned <- ifelse(BINARIZE, "_binarized_", "_weighted_")
 
-        write.csv(aurocs,paste0(netpropPath,"/results/overallPhenos_aurocResults",binned,NORMFUNC[[3]],".csv"))
+        write.csv(aurocs,paste0(netPropPath,"/results/overallPhenos_aurocResults",binned,NORMFUNC[[3]],".csv"))
     }
 }
 
