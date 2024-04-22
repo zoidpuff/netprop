@@ -18,6 +18,9 @@ if(file.exists(paste0(netPropPath,"/data/intGraph.rdata"))){
 seedVector <- rep(1, vcount(intGraph))
 
 ECvec <- igraph::page_rank(intGraph, directed = FALSE, damping = 1, personalized = seedVector,algo="arpack")
+mapping <- data.table::fread("/home/gummi/netprop/data/ensmbleIDtoNameAndNCBI.txt", data.table = F)
+ensemblIdtoName <- setNames(mapping$`Gene name`, mapping$`Gene stable ID`)
+ensemblIdtoName[names(head(sort(desc(ECvec$vector)),20))]
 
 assocDataBySourceDirectFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirectFiltered.csv"), stringsAsFactors = FALSE)
 assocDataBySourceDirIndiMergedFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered.csv"), stringsAsFactors = FALSE)

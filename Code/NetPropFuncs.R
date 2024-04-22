@@ -944,23 +944,24 @@ permuteTestParalell <- function(network, seedVector, netPropTRUE, settings,dampi
 
     }
     } else {
-        resMat <- foreach(i = 1:nSamples, .combine = rbind) %do% {
+        resMat <- list()
+        for(i in 1:nSamples){
 
-        permutedSeedVector <- rep(0, numberOfNodes)
- 
-        sampledNodesInds <- sample(numberOfNodes, numberOfSeeds)
-        permutedSeedVector[sampledNodesInds] <- seedScores
+            permutedSeedVector <- rep(0, numberOfNodes)
+    
+            sampledNodesInds <- sample(numberOfNodes, numberOfSeeds)
+            permutedSeedVector[sampledNodesInds] <- seedScores
 
-        # Run network propagation with the permuted seed vector
-        netPropFALSE <- igraph::page_rank(network, directed = FALSE, damping = damping, personalized = permutedSeedVector)
+            # Run network propagation with the permuted seed vector
+            netPropFALSE <- igraph::page_rank(network, directed = FALSE, damping = damping, personalized = permutedSeedVector)
 
-        # Add to the count vector if the permuted seed vector has a higher score then the true seed vector and the node was not a seed gene
-        countVec <- as.numeric(netPropFALSE$vector >= netPropTRUE)
-        countVec[sampledNodesInds] <- 0
+            # Add to the count vector if the permuted seed vector has a higher score then the true seed vector and the node was not a seed gene
+            countVec <- as.numeric(netPropFALSE$vector >= netPropTRUE)
+            countVec[sampledNodesInds] <- 0
 
-        countVec
-
-    }
+            resMat[[i]] <- countVec
+     }
+     resMat <- do.call(rbind,resMat)
     }
 
     permutationScores <- as.vector(colSums(resMat)/nSamples)
