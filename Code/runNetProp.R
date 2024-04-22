@@ -15,33 +15,7 @@ registerDoParallel(cl)
 
 
 ########### LOAD GRAPH DATA ###########
-intData <- read.csv(paste0(netPropPath,"/data/interactionAll.csv"), stringsAsFactors = FALSE)
 
-# Filter out any row that have scoring less then 0.75 (perhaps other values should be tested)
-
-intDataFilt  <- intData %>% filter(!(sourceDatabase == "string" & scoring <= 0.4)) # 0.4 only for stringdb
-
-rm(intData)
-
-intGraph <- graph.data.frame(intDataFilt[,c("targetA","targetB" )], directed = FALSE)
-
-# Remove any self loops and redundant edges
-
-intGraph <- simplify(intGraph, remove.multiple = TRUE, remove.loops = TRUE)
-
-# remove orphan nodes
-
-intGraph <- delete_vertices(intGraph, which(degree(intGraph) == 0))
-
-
-########### LOAD ASSOCIATION DATA ###########
-
-assocDataBySourceDirIndiMergedFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered.csv"), stringsAsFactors = FALSE)
-
-referenceVec <- read.csv(paste0(netPropPath,"/data/averageVecCombined.csv"))
-
-# loads diseaseDF object
-load(paste0(netPropPath,"/data/diseasesNew.rdata"))
 
 idToName <- setNames(diseaseDF$name, diseaseDF$id)
 
@@ -86,7 +60,7 @@ for(BINARIZE in c(TRUE)) {
               avgAUROC(network = intGraph,
                        seedList = seedList,
                        nRep = 25,
-                       recoverSizeVec = c(0.25, 0.5, 0.75, 0.9),
+                       recoverSizeVec = c(0.25, 0.75, 0.9),
                        binarize = BINARIZE,
                        NormFunc = NORMFUNC[[1]],
                        settingsForNormFunc = NORMFUNC[[2]]))
