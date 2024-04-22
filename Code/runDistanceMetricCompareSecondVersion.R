@@ -87,8 +87,8 @@ distanceMetricList <- list(
 
 
 normList <- list(#list(NULL,NULL,"noNorm"),
-                list(ECnormalize,list("logtransform" = TRUE,"refVec" =res$vector ),"ECnormLog"),
-                list(ECnormalize,list("logtransform" = TRUE,"refVec" =referenceVec$avgVec ),"AverageVecLOR"),
+                #list(ECnormalize,list("logtransform" = TRUE,"refVec" =res$vector ),"ECnormLog"),
+                #list(ECnormalize,list("logtransform" = TRUE,"refVec" =referenceVec$avgVec ),"AverageVecLOR"),
                # list(permuteTestNormalize,list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1),"permuteNorm"),
                 list(permuteTestParalell,list("nSamples" = 200,"ncore" = no_cores),"permuteNormDegree")
 )
