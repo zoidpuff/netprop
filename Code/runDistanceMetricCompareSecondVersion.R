@@ -8,7 +8,7 @@ library(doParallel)
 library(foreach)
 
 # Register the parallel backend
-no_cores <- min(14, detectCores())
+no_cores <- min(15, detectCores())
 cl <- makeCluster(no_cores)
 
 registerDoParallel(cl)
@@ -69,7 +69,7 @@ relationshipsAll <- read.csv(paste0(netPropPath,"/relationshipsWithNames.csv"), 
 
 # Create a list of the association data
 
-assocDataList <- list("assocDataBySourceDirectFiltered" = assocDataBySourceDirectFiltered,
+assocDataList <- list(#"assocDataBySourceDirectFiltered" = assocDataBySourceDirectFiltered,
                       "assocDataBySourceDirIndiMergedFiltered" = assocDataBySourceDirIndiMergedFiltered)
 
 # Create a list of distance metrics
