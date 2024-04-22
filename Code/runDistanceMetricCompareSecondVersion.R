@@ -8,7 +8,7 @@ library(doParallel)
 library(foreach)
 
 # Register the parallel backend
-no_cores <- min(10, detectCores())
+no_cores <- min(14, detectCores())
 cl <- makeCluster(no_cores)
 
 registerDoParallel(cl)
@@ -86,7 +86,7 @@ distanceMetricList <- list(
 )
 
 
-normList <- list(list(NULL,NULL,"noNorm"),
+normList <- list(#list(NULL,NULL,"noNorm"),
                 list(ECnormalize,list("logtransform" = TRUE,"refVec" =res$vector ),"ECnormLog"),
                 list(ECnormalize,list("logtransform" = TRUE,"refVec" =referenceVec$avgVec ),"AverageVecLOR"),
                # list(permuteTestNormalize,list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1),"permuteNorm"),
@@ -139,6 +139,13 @@ for(dataset in names(assocDataList)){
                                                                                                 as.logical(PREPROCESS[2]), 
                                                                                                 as.logical(PREPROCESS[3]))
                                     
+                                    if(file.exists(paste0(netPropPath,
+                                                "/results/compareDist/netpropDistanceMetricCompare_",
+                                                dataset,"_",
+                                                NORMFUNC[[3]],"_",
+                                                paste0(PREPROCESS,collapse = "_"),
+                                                "_",distanceMetric,".rdata"))){return(NULL)}
+
                                     if(!any(0>as.matrix(netPropDataFramePP))){return(NULL)}
 
                                 #for(distanceMetric in names(distanceMetricList)){
@@ -163,7 +170,7 @@ for(dataset in names(assocDataList)){
                                     gc()
                                     
                                     cat(file="internalFinished.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
-
+                                            "empty"
                                # }
         }
     }

@@ -588,7 +588,7 @@ library(ggplot2)
 
 # Load all the csv  /home/gummi/netprop/Code/results
 
-pathToCSV <- "/home/gummi/netprop/Code/results"
+pathToCSV <- "/home/gummi/netprop/results/AUROCtestNew"
 
 csvFiles <- list.files(pathToCSV, pattern = "*.csv", full.names = TRUE)
 
@@ -599,21 +599,81 @@ DFs <- lapply(csvFiles, read.csv, stringsAsFactors = FALSE)
 
 names(DFs) <- gsub(".csv","",basename(csvFiles))
 
+DFs <- DFs[1:3]
+
+$test <- DFs[[2]]
+
+# Remove rows with na in nseeds in test
+
+$test <- test %>% filter(!is.na(nseeds))
+
+# Plot the relationship between the number of seed genes and the mean_0.75 
+
+#ggplot(test, aes(x = nseeds, y = mean_0.9)) + geom_point() + geom_smooth(method = "lm") + theme_bw() + ggtitle("Scatter plot of AUROC values for Drop_0.75") + scale_x_log10()
+
 # Take mean_0.75 from each dataframe and rbind them into one dataframe with a column that indicates which dataframe the value came from
 
-DFs <- lapply(DFs, function(x) x %>% select(mean_0.9))
+DFs <- lapply(DFs, function(x) x %>% filter(nseeds > 30) %>% select(mean_0.25))
 
 DF <- do.call(rbind,DFs)
 
 DF$source <- rep(names(DFs),sapply(DFs,nrow))
 
+DF$source <- factor(DF$source, levels = c("overallPhenos_aurocResults_binarized_noNorm",
+                                          "overallPhenos_aurocResults_binarized_ECnormLog",
+                                           "overallPhenos_aurocResults_binarized_AverageVecLOR"),
+                                          labels = c("No Normalization",
+                                                      "Eigen Centrality Normalization",
+                                                      "Average NP LOR"))
+
+
 
 # Plot the density of the mean values
 
-a <-ggplot(DF, aes(x = mean_0.9, fill = source)) + geom_density(alpha = 0.5) + theme_bw() + ggtitle("Density of AUROC values for mean_0.9")
+a <-ggplot(DF, aes(x = mean_0.25, fill = source)) + 
+            geom_histogram(position = "dodge") + 
+            theme_classic() + 
+            xlab("AUROC") +
+            ylab("Count") + 
+            guides(fill=guide_legend(title="Normalization Method")) +
+                                                ggsci::scale_fill_npg() +
+            # Remove legend
+            theme(legend.position = "none")
+            
 
-# Plot boxplots of the mean values
+#a
 
+
+# Plot as a boxplot
+
+b <- ggplot(DF, aes(x = source, y = mean_0.25, fill = source)) + 
+                    geom_boxplot() + 
+                    theme_classic() + 
+                    xlab("Normalization Method") + 
+                    ylab("AUROC") +
+                    guides(fill=guide_legend(title="Normalization Method")) +
+                    # Add significance testing
+                    ggpubr::stat_compare_means(comparisons = list(c("No Normalization","Average NP LOR"),
+                                                                 c("No Normalization","Eigen Centrality Normalization"),
+                                                                 c("Average NP LOR","Eigen Centrality Normalization")),
+                                               method = "t.test",label = "p.signif") +
+                                                theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+                                                ggsci::scale_fill_npg() +
+                                                # Remove x axis labels
+                                                theme(axis.text.x = element_blank(),
+                                                      axis.ticks.x = element_blank())
+#b
+# Do an ANOVA test
+
+combPlot <- cowplot::plot_grid(a,b, rel_widths = c(1,1.5))
+# Save the plot as a pdf
+ggsave("AverageAUROC.png",combPlot, width = 10, height = 4)
+
+aov(mean_0.25 ~ source, data = DF) %>% summary()
+
+# Do a linear model
+
+lm(mean_0.25 ~ source, data = DF) %>% summary()
 
 ```
 
