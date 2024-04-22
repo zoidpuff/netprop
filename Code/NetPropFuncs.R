@@ -792,8 +792,8 @@ generatePlotsFromDistCompareResults <- function(resList,diseaseMapping = NULL, d
                 y = "Density") + 
             # Add AUROC and JSD to the plot
             annotate("text", x = median(resList[["densityEstRand"]]$x), y =  mean(range(resList[["densityEstRand"]]$y)),
-                    label = paste("AUROC:",safeRound(resList[["AUROC"]],2),"\n",
-                                    "JSD:",safeRound(resList[["JSD"]],2)), size = 5, color = "black") 
+                    label = paste("AUROC:",safeRound(resList[["AUROC"]],2)))#,"\n",
+                                    #"JSD:",safeRound(resList[["JSD"]],2)), size = 5, color = "black") 
                                  #   xlim(min(resList[["densityEstRand"]]$x),max(resList[["densityEstRand"]]$x))
     if(densityOnly) {
         return(plotList)

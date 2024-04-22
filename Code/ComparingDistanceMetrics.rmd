@@ -21,11 +21,105 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
 
 ```{r include=FALSE} 
 
-distFuncsT <- c("euclidean", "manhattan", "cosine", "cosineDist", "cosineSharp2",
-                "pearsonDist", "spearmanDist", "kendall", "kendallDist")
+distFuncsT <- c("euclidean", "manhattan", "cosine", "cosineSharp2",
+                "pearsonDist", "spearmanDist", "kendallDist")
 
 varCuttOffsT <- c("0","0.25", "0.5", "0.75","0Center")
-        
+
+plotDensityGridTransposed <- function(distFuncs, varCuttOffs, normMethod, dataset, masterRes) {
+    listOfPlots <- list()
+    for(cuttoff in varCuttOffs) {
+        if(cuttoff == "0Center") {
+            cuttoff <- "0"
+            center <- "TRUE"
+        } else {
+            center <- "FALSE"
+        }
+        for(dist in distFuncs) {
+            plots <- generatePlotsFromDistCompareResults( masterRes[[dataset]][[normMethod]][[cuttoff]][[center]][["FALSE"]][[dist]] )
+            if(center == "TRUE") {
+                cuttoffLab <- paste0(cuttoff," Centered")
+            } else {
+                cuttoffLab <- cuttoff
+            }
+            listOfPlots[[paste(cuttoffLab,dist)]] <- plots[[1]] + 
+            theme(axis.title.x=element_blank(),
+                  axis.text.y=element_blank(),
+                  axis.ticks.y=element_blank()) 
+            if(dist == distFuncs[1]) {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ylab(cuttoffLab)
+            } else {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ylab("")
+            }
+            if(cuttoffLab == varCuttOffs[1]) {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ggtitle(dist)
+            } else {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ggtitle("") }
+        }
+    }
+
+    plotT <- cowplot::plot_grid(plotlist = listOfPlots, ncol = length(distFuncs), byrow = TRUE)
+    return(plotT)
+}
+plotDensityGridTransposed <- function(distFuncs, varCuttOffs, normMethod, dataset, masterRes) {
+    listOfPlots <- list()
+    x_ranges <- list()
+    for(cuttoff in varCuttOffs) {
+        if(cuttoff == "0Center") {
+            cuttoff <- "0"
+            center <- "TRUE"
+        } else {
+            center <- "FALSE"
+        }
+        for(dist in distFuncs) {
+            plots <- generatePlotsFromDistCompareResults( masterRes[[dataset]][[normMethod]][[cuttoff]][[center]][["FALSE"]][[dist]] )
+            if(center == "TRUE") {
+                cuttoffLab <- paste0(cuttoff," Centered")
+            } else {
+                cuttoffLab <- cuttoff
+            }
+            listOfPlots[[paste(cuttoffLab,dist)]] <- plots[[1]] + 
+            theme(axis.title.x=element_blank(),
+                  axis.text.y=element_blank(),
+                  axis.ticks.y=element_blank()) 
+            if(dist == distFuncs[1]) {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ylab(cuttoffLab)
+            } else {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ylab("")
+            }
+            if(cuttoffLab == varCuttOffs[1]) {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ggtitle(dist)
+            } else {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ggtitle("") }
+            
+            if(cuttoffLab != "0 Centered") {
+                  x_ranges[[cuttoffLab]][[dist]] <- layer_scales(plots[[1]])$x$range$range
+            }
+            # Store the x range of each plot
+
+        }
+    }
+
+    # Loop over the distance functions to find the minimum and maximum x for each function
+    for(dist in distFuncs) {
+        x_min <- min(unlist(lapply(x_ranges, function(x) x[[dist]][1])))
+        x_max <- max(unlist(lapply(x_ranges, function(x) x[[dist]][2])))
+
+        # Loop over the plots again to set the x limits for each distance function
+        for(cuttoff in varCuttOffs) {
+            if(cuttoff == "0Center") {
+                
+            } else {
+                cuttoffLab <- cuttoff
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + xlim(x_min, x_max)
+            }
+            
+        }
+    }
+
+    plotT <- cowplot::plot_grid(plotlist = listOfPlots, ncol = length(distFuncs), byrow = TRUE)
+    return(plotT)
+}
 
 ```
 
@@ -49,7 +143,7 @@ knitr::include_graphics(c("/home/gummi/netprop/image4.png","/home/gummi/netprop/
 
 ```{r fig.height=15, fig.width=10, warning=FALSE}
 
-plotDensityGrid(distFuncsT, varCuttOffsT, "noNorm", "AllTraitsOverallScores", masterRes)
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "noNorm", "AllTraitsOverallScores", masterRes)
 
 ```
 

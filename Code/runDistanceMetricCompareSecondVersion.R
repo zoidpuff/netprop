@@ -145,6 +145,10 @@ for(dataset in names(assocDataList)){
                                                 NORMFUNC[[3]],"_",
                                                 paste0(PREPROCESS,collapse = "_"),
                                                 "_",distanceMetric,".rdata"))){return(NULL)}
+                                    
+                                    if(distanceMetric == "jsd" & NORMFUNC[[3]] %in% c("ECnormLog","AverageVecLOR")) {return(NULL)}
+
+                                    if(as.logical(PREPROCESS[2]) & distanceMetric == "jsd"){return(NULL)}
 
                                     if(!any(0>as.matrix(netPropDataFramePP))){return(NULL)}
 
