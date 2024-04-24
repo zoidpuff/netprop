@@ -836,12 +836,20 @@ generatePlotsFromDistCompareResults <- function(resList,diseaseMapping = NULL, d
             clusterCenters <- coordDF %>% group_by(Cluster) %>% summarise(Dim1 = median(Dim1),Dim2 = median(Dim2)) %>% ungroup()
 
             coordDF$Cluster <- as.factor(as.character(coordDF$Cluster))
+            
+            # Remove the suffix after "-" in the disease names
+            cleanedRownames <- rownames(coordDF) %>% strsplit("-") %>% sapply(function(x) x[1])
 
-            coordDF$labels <- paste0(rownames(coordDF), " (", idToName[rownames(coordDF)], ")")
+            # Get the suffixes of the disease names
+            suffixes <- rownames(coordDF) %>% strsplit("-") %>% sapply(function(x) x[2])
+
+            coordDF$labels <- paste0(rownames(coordDF), " (", idToName[cleanedRownames], ")")
+
+            coordDF$datasets <- suffixes
 
             plotList[[paste0("Plot_",clustAlgo,"_",coord)]]  <- ggplot() +
-                    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster",text="labels"),size=1) +
-                    geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
+                    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "suffixes",text="labels"),size=1) +
+                    #geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
                     #geom_text(data = clusterCenters,aes_string(x = "Dim1",y = "Dim2",label = "Cluster"),size = 3) +
                     theme_classic() +
                     labs(title = paste0(coord, " with ", clustAlgo, " Clustering"))  

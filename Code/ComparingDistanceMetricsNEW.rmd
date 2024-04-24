@@ -12,8 +12,8 @@ library(dplyr)
 library(plotly)
 library(kableExtra)
 source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
-diseaseMapping <- read.csv("/home/gummi/netprop/data/phenotypeMapping.csv")
-
+load("/home/gummi/netprop/data/diseasesNew.rdata")
+diseaseMapping <- diseaseDF
 knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE) 
 
 ```

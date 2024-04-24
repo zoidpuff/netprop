@@ -5,14 +5,15 @@ output: html_document
 
 ```{r setup, include=FALSE}
 netPropPath <- "/home/gummi/netprop"
-load("/home/gummi/netprop/netpropDistanceResRAREcommon_assocRareGWASRelatedSet_noNorm_kendall.rdata")
+load("/home/gummi/netprop/results/netpropDistanceResRAREcommon_assocRareGWASRelatedSet_noNorm_kendall.rdata")
 library(ggplot2)
 library(kableExtra)
 library(dplyr)
 library(plotly)
 library(kableExtra)
 source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
-diseaseMapping <- read.csv("/home/gummi/netprop/data/phenotypeMapping.csv")
+load("/home/gummi/netprop/data/diseasesNew.rdata")
+diseaseMapping <- diseaseDF
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE) 
 
@@ -22,80 +23,12 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
 ```{r include=FALSE} 
 
 names(res)
-
-
-
-[1] "summaryAll"                             
-[2] "DensityAll"                             
-[3] "HistAll"                                
-[4] "summaryRelated_across"                  
-[5] "related_across"                         
-[6] "summaryRelated_ot_genetics_portal"      
-[7] "related_ot_genetics_portal"             
-[8] "summaryRelated_eva, orphanet"           
-[9] "related_eva, orphanet"                  
-[10] "summaryRelated_randomot_genetics_portal"
-[11] "related_randomot_genetics_portal"       
-[12] "summaryRelated_randomeva, orphanet"     
-[13] "related_randomeva, orphanet"            
-[14] "summaryRandom"                          
-[15] "densityEstRand"                         
-[16] "ratios_across"                          
-[17] "AUROC_across"                           
-[18] "JSD_across"                             
-[19] "densityEstRel_across"                   
-[20] "ratios_ot_genetics_portal"              
-[21] "AUROC_ot_genetics_portal"               
-[22] "JSD_ot_genetics_portal"                 
-[23] "densityEstRel_ot_genetics_portal"       
-[24] "ratios_eva, orphanet"                   
-[25] "AUROC_eva, orphanet"                    
-[26] "JSD_eva, orphanet"                      
-[27] "densityEstRel_eva, orphanet"            
-[28] "ratios_randomot_genetics_portal"        
-[29] "AUROC_randomot_genetics_portal"         
-[30] "JSD_randomot_genetics_portal"           
-[31] "densityEstRel_randomot_genetics_portal" 
-[32] "ratios_randomeva, orphanet"             
-[33] "AUROC_randomeva, orphanet"              
-[34] "JSD_randomeva, orphanet"                
-[35] "densityEstRel_randomeva, orphanet"      
-[36] "cMDS"                                   
-[37] "isoMDS"                                 
-[38] "UMAP"                                   
-[39] "HClust"                                 
-[40] "HClustKcut"                             
-[41] "HClustDTC"                              
-[42] "Leiden"                                 
-[43] "commonAncestors_HClustKcut"             
-[44] "legendDF_HClustKcut"                    
-[45] "coorDF_HClustKcut_cMDS"                 
-[46] "pairDF_HClustKcut_cMDS"                 
-[47] "coorDF_HClustKcut_isoMDS"               
-[48] "pairDF_HClustKcut_isoMDS"               
-[49] "coorDF_HClustKcut_UMAP"                 
-[50] "pairDF_HClustKcut_UMAP"                 
-[51] "commonAncestors_Leiden"                 
-[52] "legendDF_Leiden"                        
-[53] "coorDF_Leiden_cMDS"                     
-[54] "pairDF_Leiden_cMDS"                     
-[55] "coorDF_Leiden_isoMDS"                   
-[56] "pairDF_Leiden_isoMDS"                   
-[57] "coorDF_Leiden_UMAP"                     
-[58] "pairDF_Leiden_UMAP"                     
-[59] "commonAncestors_HClustDTC"              
-[60] "legendDF_HClustDTC"                     
-[61] "coorDF_HClustDTC_cMDS"                  
-[62] "pairDF_HClustDTC_cMDS"                  
-[63] "coorDF_HClustDTC_isoMDS"                
-[64] "pairDF_HClustDTC_isoMDS"                
-[65] "coorDF_HClustDTC_UMAP"                  
-[66] "pairDF_HClustDTC_UMAP"  
+  
 
 
 ```
 
-```{r include=FALSE} 
+```{r include=TRUE} 
 
 summaries <- c("summaryRandom",
                 "summaryRelated_across",
@@ -112,7 +45,7 @@ summaryList
 ```
 
 
-```{r include=FALSE} 
+```{r include=TRUE} 
 densities <- c("densityEstRand",
     "densityEstRel_across",
     "densityEstRel_ot_genetics_portal",
@@ -140,13 +73,13 @@ ggplot(data.frame("x" = densitiesList[["densityEstRand"]]$x, "y" = densitiesList
 
 ```
 
-```{r include=FALSE}
+```{r include=TRUE}
 
 vectors <- c(
-    "related_randomot_genetics_portal",
     "related_across",
     "related_ot_genetics_portal",
     "related_eva, orphanet",
+    "related_randomot_genetics_portal",
     "related_randomeva, orphanet")
 
 # Add the vectors together into a dataframe, including a label column
@@ -173,7 +106,7 @@ summary(lmRes)
 
 ```
 
-```{r include=FALSE}
+```{r include=TRUE}
 
 # Plot the vecorts as a boxplot
 
@@ -193,10 +126,19 @@ ggplot(vectorDF, aes(x = label, y = value, fill = label)) +
 ```
 
 
-```{r include=FALSE}
+```{r include=TRUE}
 
 # get some plots with generatePlotsFromDistCompareResults
 
 plots <- generatePlotsFromDistCompareResults(res,diseaseMapping,skipDensity = TRUE) 
-res[["pairDF_Leiden_UMAP"]]
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+```
+
+
+```{r include=TRUE}
+
+# get some plots with generatePlotsFromDistCompareResults
+
+plots <- generatePlotsFromDistCompareResults(res,diseaseMapping,skipDensity = TRUE) 
+ggplotly(plots[["Plot_Leiden_cMDS"]])
 ```
