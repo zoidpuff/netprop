@@ -107,7 +107,7 @@ constraintData <- left_join(constraintData, transcriptToGene, by = c("transcript
                     left_join(depMapData, by = c("Gene stable ID" = "ensemblID")) %>%
                     left_join(proteinAbundance, by = c("Gene stable ID" = "ensemblID"))
 nrow(constraintData)
-View(head(constraintData))
+#View(head(constraintData))
 
 # Add the length of the gene by using Gene start (bp) and Gene end (bp)
 constraintData <- constraintData %>% 
@@ -313,7 +313,7 @@ aCountsPlot <- ggplot(combDF, aes(x = diseaseIdFactor, fill = source)) +
 
 geneVennplotEmptyAdded <- cowplot::plot_grid(geneVennPlot,geneVennPlot2,ncol =2,rel_widths = c(3,3))
 
-firstPlotRareDisease <- cowplot::plot_grid(a,aCountsPlot,ncol = 1,rel_heights = c(4,1))
+firstPlotRareDisease <- cowplot::plot_grid(a,aCountsPlot,ncol = 1,rel_heights = c(3,1))
 
 
 
@@ -409,7 +409,7 @@ geneLengthPlot <- ggplot() +
                 geom_rug(aes(x = evaOrphanetGeneLength, color = "EVA/Orphanet (Score > 0.5)"),alpha = 0.02) +
                 geom_rug(aes(x = otGeneticsGeneLength, color = "OT Genetics (L2G > 0.4)"),alpha = 0.01) +
                 labs(title = "Distribution of Gene Lengths",
-                      subtitle = paste0("P-value for difference in means (log-transformed): ",format(ttestGeneLength$p.value))) + 
+                      subtitle = paste0("P-value for difference in means (log-transformed): ",format(ttestGeneLength$p.value,digits=4))) + 
                 xlab("Gene Length (bp)") + 
                 ylab("Density") + 
                 theme_classic() +
@@ -474,7 +474,7 @@ proteinAbundancePlot <- ggplot() +
                 geom_rug(aes(x = evaOrphanetProteinAbundance+1, color = "EVA/Orphanet (Score > 0.5)"),alpha = 0.03) +
                 geom_rug(aes(x = otGeneticsProteinAbundance+1, color = "OT Genetics (L2G > 0.4)"),alpha = 0.01) +
                 labs(title = "Distribution of Protein Abundance",
-                      subtitle = paste0("P-value for difference in means (negative binomal glm): ",format(pValue))) + 
+                      subtitle = paste0("P-value (negative binomal glm): ",format(pValue,digits=4))) + 
                 xlab("log10(Protein Abundance + 1)") + 
                 ylab("Density") + 
                 theme_classic() +
@@ -624,7 +624,16 @@ molecularFunctionPlot <- ggplot(molecularFunctionDF, aes(x = reorder(Function,Fr
 ###################
 # Plot the stuff
 
-depmapAndProteinPlots <- cowplot::plot_grid(depMapPlot,proteinAbundancePlot,ncol = 2,rel_widths = c(3,3))
+depmapAndProteinPlots <- cowplot::plot_grid(depMapPlot,geneLengthPlot,proteinAbundancePlot,ncol = 3,rel_widths = c(3,3,3))
+
+# Same plot but remove all the legends and plot one legend that is the same for all plots using cowplot::get_legend()
+
+depmapAndProteinPlots <- cowplot::plot_grid(depMapPlot + theme(legend.position = "none"),
+                                            geneLengthPlot + theme(legend.position = "none"),
+                                            proteinAbundancePlot + theme(legend.position = "none"),
+                                            cowplot::get_legend(depMapPlot),ncol = 4,rel_widths = c(3,3,3,0.5))
+
+cowplot::ggsave2("depmapAndProteinPlots.png",depmapAndProteinPlots,width = 16,height = 6)
 
 # Plot the biological process, subcellular location and molecular function plots
 biologicalProcessPlot <- cowplot::plot_grid(molecularFunctionPlot,subcellularLocationPlot,ncol = 1,rel_heights = c(3,3))

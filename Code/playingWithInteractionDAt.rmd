@@ -599,21 +599,9 @@ DFs <- lapply(csvFiles, read.csv, stringsAsFactors = FALSE)
 
 names(DFs) <- gsub(".csv","",basename(csvFiles))
 
-DFs <- DFs[1:3]
-
-$test <- DFs[[2]]
-
-# Remove rows with na in nseeds in test
-
-$test <- test %>% filter(!is.na(nseeds))
-
-# Plot the relationship between the number of seed genes and the mean_0.75 
-
-#ggplot(test, aes(x = nseeds, y = mean_0.9)) + geom_point() + geom_smooth(method = "lm") + theme_bw() + ggtitle("Scatter plot of AUROC values for Drop_0.75") + scale_x_log10()
-
 # Take mean_0.75 from each dataframe and rbind them into one dataframe with a column that indicates which dataframe the value came from
 
-DFs <- lapply(DFs, function(x) x %>% filter(nseeds > 30) %>% select(mean_0.25))
+DFs <- lapply(DFs, function(x) x %>% filter(nseeds > 25) %>% select(mean_0.25,mean_0.75,mean_0.9,trait,nseeds))
 
 DF <- do.call(rbind,DFs)
 
@@ -621,26 +609,31 @@ DF$source <- rep(names(DFs),sapply(DFs,nrow))
 
 DF$source <- factor(DF$source, levels = c("overallPhenos_aurocResults_binarized_noNorm",
                                           "overallPhenos_aurocResults_binarized_ECnormLog",
-                                           "overallPhenos_aurocResults_binarized_AverageVecLOR"),
+                                           "overallPhenos_aurocResults_binarized_AverageVecLOR",
+                                           "overallPhenos_aurocResults_binarized_permuteNormDegree"),
                                           labels = c("No Normalization",
-                                                      "Eigen Centrality Normalization",
-                                                      "Average NP LOR"))
+                                                      "EC Normalization",
+                                                      "Average NP LOR",
+                                                      "Permutation Normalization"))
 
 
+DF <- DF %>% filter(source != "Average NP LOR")
 
 # Plot the density of the mean values
 
-a <-ggplot(DF, aes(x = mean_0.25, fill = source)) + 
-            geom_histogram(position = "dodge") + 
+length(unique(DF$trait))
+
+a <-ggplot(DF, aes(x = mean_0.25, fill = source, color = source)) + 
+            #geom_histogram(position = "dodge") + 
+            geom_density(alpha = 0.5) +
+            geom_rug(alpha = 0.1) +
             theme_classic() + 
             xlab("AUROC") +
-            ylab("Count") + 
+            ylab("Density") + 
             guides(fill=guide_legend(title="Normalization Method")) +
-                                                ggsci::scale_fill_npg() +
-            # Remove legend
-            theme(legend.position = "none")
-            
-
+            theme(legend.position = "none") +
+            ggsci::scale_fill_npg() +
+            ggsci::scale_color_npg()
 #a
 
 
@@ -653,19 +646,32 @@ b <- ggplot(DF, aes(x = source, y = mean_0.25, fill = source)) +
                     ylab("AUROC") +
                     guides(fill=guide_legend(title="Normalization Method")) +
                     # Add significance testing
-                    ggpubr::stat_compare_means(comparisons = list(c("No Normalization","Average NP LOR"),
-                                                                 c("No Normalization","Eigen Centrality Normalization"),
-                                                                 c("Average NP LOR","Eigen Centrality Normalization")),
-                                               method = "t.test",label = "p.signif") +
-                                                theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-                                                ggsci::scale_fill_npg() +
-                                                # Remove x axis labels
-                                                theme(axis.text.x = element_blank(),
-                                                      axis.ticks.x = element_blank())
+                    ggpubr::stat_compare_means(comparisons = list(c("No Normalization","EC Normalization"),
+                                                                 c("No Normalization","Permutation Normalization"),
+                                                                 c("EC Normalization","Permutation Normalization")),
+                                               method = "t.test") +
+                    ggsci::scale_fill_npg() + 
+                    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+                    
 #b
 # Do an ANOVA test
 
+# Plot a scatter plot of EC norm vs permute norm
+
+# Pivot wider
+
+DFpivot <- tidyr::pivot_wider(DF[,c("trait","mean_0.25","source")], names_from = source, values_from = mean_0.25)
+
+# Do a scatter plot
+
+c <- ggplot(DFpivot, aes(x = `EC Normalization`, y = `Permutation Normalization`)) + geom_point() + geom_smooth(method = "lm") + theme_classic() + xlab("EC Normalization") + ylab("Permutation Normalization")
+d <- ggplot(DFpivot, aes(x = `EC Normalization`, y = `No Normalization`)) + geom_point() + geom_smooth(method = "lm") + theme_classic() + xlab("EC Normalization") + ylab("No Normalization")
+e <- ggplot(DFpivot, aes(x = `No Normalization`, y = `Permutation Normalization`)) + geom_point() + geom_smooth(method = "lm") + theme_classic() + xlab("No Normalization") + ylab("Permutation Normalization")
+
+combPlotScatter <- cowplot::plot_grid(c,d,e, rel_widths = c(1,1,1))
+
 combPlot <- cowplot::plot_grid(a,b, rel_widths = c(1,1.5))
+combPlot
 # Save the plot as a pdf
 ggsave("AverageAUROC.png",combPlot, width = 10, height = 4)
 

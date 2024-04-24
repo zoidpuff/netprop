@@ -1,0 +1,188 @@
+---
+title: "Comparing distance metrics"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+netPropPath <- "/home/gummi/netprop"
+load("/home/gummi/netprop/masterDistCompareNew.rdata")
+library(ggplot2)
+library(kableExtra)
+library(dplyr)
+library(plotly)
+library(kableExtra)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+diseaseMapping <- read.csv("/home/gummi/netprop/data/phenotypeMapping.csv")
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE) 
+
+```
+
+
+```{r include=FALSE} 
+
+distFuncsT <- c("euclidean", "manhattan", "cosine", "cosineSharp2",
+                "pearsonDist", "spearmanDist", "kendallDist")
+
+distFuncsT <- c("euclidean", "manhattan","minkowski05", "cosine", "pearson",
+                "spearman", "kendall","jsd")
+
+
+varCuttOffsT <- c("0","0.25", "0.5", "0.75","0Center")
+
+plotDensityGridTransposed <- function(distFuncs, varCuttOffs, normMethod, dataset, masterRes) {
+    listOfPlots <- list()
+    for(cuttoff in varCuttOffs) {
+        if(cuttoff == "0Center") {
+            cuttoff <- "0"
+            center <- "TRUE"
+        } else {
+            center <- "FALSE"
+        }
+        for(dist in distFuncs) {
+          if(is.null(masterRes[[dataset]][[normMethod]][[cuttoff]][[center]][["FALSE"]][[dist]])) {
+              plots <- list(ggplot() + theme_classic())
+             } else {
+            plots <- generatePlotsFromDistCompareResults( masterRes[[dataset]][[normMethod]][[cuttoff]][[center]][["FALSE"]][[dist]] )
+            }
+            if(center == "TRUE") {
+                cuttoffLab <- paste0(cuttoff," Centered")
+            } else {
+                cuttoffLab <- cuttoff
+            }
+            listOfPlots[[paste(cuttoffLab,dist)]] <- plots[[1]] + 
+            theme(axis.title.x=element_blank(),
+                  axis.text.y=element_blank(),
+                  axis.ticks.y=element_blank()) 
+            if(dist == distFuncs[1]) {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ylab(cuttoffLab)
+            } else {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ylab("")
+            }
+            if(cuttoffLab == varCuttOffs[1]) {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ggtitle(dist)
+            } else {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ggtitle("") }
+        }
+    }
+
+    plotT <- cowplot::plot_grid(plotlist = listOfPlots, ncol = length(distFuncs), byrow = TRUE)
+    return(plotT)
+}
+
+
+```
+
+---
+
+## Indirect {.tabset .tabset-pills}
+
+### No normalization
+
+```{r fig.height=9, fig.width=16, warning=FALSE}
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "noNorm", "assocDataBySourceDirIndiMergedFiltered", masterRes)
+
+```
+
+### Eigen Centrality normalization
+
+```{r fig.height=9, fig.width=16}
+
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "ECnormLog", "assocDataBySourceDirIndiMergedFiltered", masterRes)
+
+
+```
+
+### Permutation Testing normalization
+
+```{r fig.height=9, fig.width=16}
+
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "permuteNormDegree", "assocDataBySourceDirIndiMergedFiltered", masterRes)
+
+
+```
+
+
+## Direct {.tabset .tabset-pills}
+
+### No normalization
+
+```{r fig.height=9, fig.width=16, warning=FALSE}
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "noNorm", "assocDataBySourceDirectFiltered", masterRes)
+
+```
+
+### Eigen Centrality normalization
+
+```{r fig.height=9, fig.width=16}
+
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "AverageVecLOR", "assocDataBySourceDirectFiltered", masterRes)
+
+
+```
+
+### Permutation Testing normalization
+
+```{r fig.height=9, fig.width=16}
+
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "permuteNormDegree", "assocDataBySourceDirectFiltered", masterRes)
+
+
+```
+
+
+## UMAPs
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirIndiMergedFiltered"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping) 
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+```{r warning=FALSE}
+
+
+df <- masterRes[["assocDataBySourceDirIndiMergedFiltered"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+
+```
+
+
+
+## Direct 
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirectFiltered"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+```
+
+
+```{r warning=FALSE}
+
+df <- masterRes[["assocDataBySourceDirectFiltered"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+```

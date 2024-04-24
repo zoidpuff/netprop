@@ -5,7 +5,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 netPropPath <- "/home/gummi/netprop"
-load("/home/gummi/netprop/masterRes.rdata")
+load("/home/gummi/netprop/masterDistCompareNew.rdata")
 library(ggplot2)
 library(kableExtra)
 library(dplyr)
@@ -23,6 +23,10 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
 
 distFuncsT <- c("euclidean", "manhattan", "cosine", "cosineSharp2",
                 "pearsonDist", "spearmanDist", "kendallDist")
+
+distFuncsT <- c("euclidean", "manhattan", "cosine", "cosineSharp2", "pearson",
+                "minkowski05", "spearman", "kendall","jsd")
+
 
 varCuttOffsT <- c("0","0.25", "0.5", "0.75","0Center")
 
@@ -72,7 +76,11 @@ plotDensityGridTransposed <- function(distFuncs, varCuttOffs, normMethod, datase
             center <- "FALSE"
         }
         for(dist in distFuncs) {
+          if(is.null(masterRes[[dataset]][[normMethod]][[cuttoff]][[center]][["FALSE"]][[dist]])) {
+              plots <- list(ggplot())
+             } else {
             plots <- generatePlotsFromDistCompareResults( masterRes[[dataset]][[normMethod]][[cuttoff]][[center]][["FALSE"]][[dist]] )
+            }
             if(center == "TRUE") {
                 cuttoffLab <- paste0(cuttoff," Centered")
             } else {
@@ -143,7 +151,8 @@ knitr::include_graphics(c("/home/gummi/netprop/image4.png","/home/gummi/netprop/
 
 ```{r fig.height=15, fig.width=10, warning=FALSE}
 
-plotDensityGridTransposed(distFuncsT, varCuttOffsT, "noNorm", "AllTraitsOverallScores", masterRes)
+#plotDensityGridTransposed(distFuncsT, varCuttOffsT, "noNorm", "assocDataBySourceDirIndiMergedFiltered", masterRes)
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "noNorm", "assocDataBySourceDirectFiltered", masterRes)
 
 ```
 
@@ -724,3 +733,243 @@ ggplotly(plots[["Plot_Leiden_cMDS"]])
 
 
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#################
+## Indirect {.tabset .tabset-pills}
+
+### No normalization
+
+```{r fig.height=10, fig.width=15, warning=FALSE}
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "noNorm", "assocDataBySourceDirIndiMergedFiltered", masterRes)
+
+```
+
+### Eigen Centrality normalization
+
+```{r fig.height=10, fig.width=15}
+
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "ECnormLog", "assocDataBySourceDirIndiMergedFiltered", masterRes)
+
+
+```
+
+### Permutation Testing normalization
+
+```{r fig.height=10, fig.width=15}
+
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "permuteNormDegree", "assocDataBySourceDirIndiMergedFiltered", masterRes)
+
+
+```
+
+
+## Direct {.tabset .tabset-pills}
+
+### No normalization
+
+```{r fig.height=10, fig.width=15, warning=FALSE}
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "noNorm", "assocDataBySourceDirectFiltered", masterRes)
+
+```
+
+### Eigen Centrality normalization
+
+```{r fig.height=10, fig.width=15}
+
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "AverageVecLOR", "assocDataBySourceDirectFiltered", masterRes)
+
+
+```
+
+### Permutation Testing normalization
+
+```{r fig.height=10, fig.width=15}
+
+
+plotDensityGridTransposed(distFuncsT, varCuttOffsT, "permuteNormDegree", "assocDataBySourceDirectFiltered", masterRes)
+
+
+```
+
+
+
+########################### 
+
+
+
+
+### NO NORM jsd
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirIndiMergedFiltered"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["jsd"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+```
+
+
+### NO NORM Cosine Centered
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirIndiMergedFiltered"]][["noNorm"]][["0"]][["TRUE"]][["FALSE"]][["cosine"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+```
+
+### Permutation Norm Kendall
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirIndiMergedFiltered"]][["permuteNormDegree"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+```
+
+# Direct
+
+## NO NORM Cosine Centered
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirectFiltered"]][["noNorm"]][["0"]][["TRUE"]][["FALSE"]][["cosine"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+```
+
+## ECnorm Cosine Centered
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirectFiltered"]][["ECnormLog"]][["0"]][["TRUE"]][["FALSE"]][["cosine"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+```
+
+## NO NORM KENDALL
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirectFiltered"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+```
+
+
+## ECnorm KENDALL
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirectFiltered"]][["ECnormLog"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping)
+
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+```
+
+## NoNorm Euclidean
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirectFiltered"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["euclidean"]],diseaseMapping)
+
+ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+```
+
+
+
+
+plotDensityGridTransposed <- function(distFuncs, varCuttOffs, normMethod, dataset, masterRes) {
+    listOfPlots <- list()
+    x_ranges <- list()
+    for(cuttoff in varCuttOffs) {
+        if(cuttoff == "0Center") {
+            cuttoff <- "0"
+            center <- "TRUE"
+        } else {
+            center <- "FALSE"
+        }
+        for(dist in distFuncs) {
+          if(is.null(masterRes[[dataset]][[normMethod]][[cuttoff]][[center]][["FALSE"]][[dist]])) {
+              plots <- list(ggplot() + theme_classic())
+             } else {
+            plots <- generatePlotsFromDistCompareResults( masterRes[[dataset]][[normMethod]][[cuttoff]][[center]][["FALSE"]][[dist]] )
+            }
+            if(center == "TRUE") {
+                cuttoffLab <- paste0(cuttoff," Centered")
+            } else {
+                cuttoffLab <- cuttoff
+            }
+            listOfPlots[[paste(cuttoffLab,dist)]] <- plots[[1]] + 
+            theme(axis.title.x=element_blank(),
+                  axis.text.y=element_blank(),
+                  axis.ticks.y=element_blank()) 
+            if(dist == distFuncs[1]) {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ylab(cuttoffLab)
+            } else {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ylab("")
+            }
+            if(cuttoffLab == varCuttOffs[1]) {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ggtitle(dist)
+            } else {
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + ggtitle("") }
+            
+            if(cuttoffLab != "0 Centered") {
+                  x_ranges[[cuttoffLab]][[dist]] <- layer_scales(plots[[1]])$x$range$range
+            }
+            # Store the x range of each plot
+
+        }
+    }
+
+    # Loop over the distance functions to find the minimum and maximum x for each function
+    for(dist in distFuncs) {
+        x_min <- min(unlist(lapply(x_ranges, function(x) x[[dist]][1])))
+        x_max <- max(unlist(lapply(x_ranges, function(x) x[[dist]][2])))
+
+        # Loop over the plots again to set the x limits for each distance function
+        for(cuttoff in varCuttOffs) {
+            if(cuttoff == "0Center") {
+                
+            } else {
+                cuttoffLab <- cuttoff
+                listOfPlots[[paste(cuttoffLab,dist)]] <- listOfPlots[[paste(cuttoffLab,dist)]] + xlim(x_min, x_max)
+            }
+            
+        }
+    }
+
+    plotT <- cowplot::plot_grid(plotlist = listOfPlots, ncol = length(distFuncs), byrow = TRUE)
+    return(plotT)
+}

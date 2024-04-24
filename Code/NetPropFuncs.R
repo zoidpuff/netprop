@@ -444,7 +444,7 @@ runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 
 # It computes the distance between the network propagation vectors for each disease pair and for all possible pairs of diseases df
 
 
-compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, diseasePairs, randomSetSize,  compareALL = FALSE, diseasesDataFrame, returnDist = FALSE, diseaseShortestPaths = NULL) {
+compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, diseasePairs, randomSetSize, compareALL = FALSE, diseasesDataFrame, returnDist = FALSE, diseaseShortestPaths = NULL) {
     # Check if diseasePairs is a list, if not convert into a list
     if(is.data.frame(diseasePairs) | is.matrix(diseasePairs)) {
         diseasePairs <- list("_" = diseasePairs)
@@ -475,7 +475,6 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
     distdex <-function(i,j,n) {
         return(n*(i-1) - i*(i-1)/2 + j-i)
     }
-
 
     excludeFromRandomInds <- c()
     relatedVecComb <- c()
@@ -792,8 +791,8 @@ generatePlotsFromDistCompareResults <- function(resList,diseaseMapping = NULL, d
                 y = "Density") + 
             # Add AUROC and JSD to the plot
             annotate("text", x = median(resList[["densityEstRand"]]$x), y =  mean(range(resList[["densityEstRand"]]$y)),
-                    label = paste("AUROC:",safeRound(resList[["AUROC"]],2)))#,"\n",
-                                    #"JSD:",safeRound(resList[["JSD"]],2)), size = 5, color = "black") 
+                    label = paste("AUROC:",safeRound(resList[["AUROC"]],2),"\n",
+                                    "SCC:",safeRound(abs(resList[["DistGraphSCC"]]),2)), size = 5, color = "black") 
                                  #   xlim(min(resList[["densityEstRand"]]$x),max(resList[["densityEstRand"]]$x))
     if(densityOnly) {
         return(plotList)
@@ -828,9 +827,9 @@ generatePlotsFromDistCompareResults <- function(resList,diseaseMapping = NULL, d
             coordDF$labels <- paste0(rownames(coordDF), " (", idToName[rownames(coordDF)], ")")
 
             plotList[[paste0("Plot_",clustAlgo,"_",coord)]]  <- ggplot() +
-                    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster",text="labels")) +
-                    geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
-                    geom_text(data = clusterCenters,aes_string(x = "Dim1",y = "Dim2",label = "Cluster"),size = 3) +
+                    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster",text="labels"),size=1) +
+                    #geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
+                    #geom_text(data = clusterCenters,aes_string(x = "Dim1",y = "Dim2",label = "Cluster"),size = 3) +
                     theme_classic() +
                     labs(title = paste0(coord, " with ", clustAlgo, " Clustering"))  
                     #coord_cartesian(xlim = quantile(coordDF$Dim1,c(0.01,0.99)),ylim = quantile(coordDF$Dim2,c(0.01,0.99))) 
