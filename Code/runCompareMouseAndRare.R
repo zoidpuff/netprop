@@ -147,6 +147,9 @@ for(dataset in names(assocDataList)){
 
         relationshipsFromAll2 <- data.frame(term1 = paste0(relationshipsFromAll$term1, "-", dataset2),
                                         term2 = paste0(relationshipsFromAll$term2, "-", dataset2))
+        
+        relationshipsFromAllAcross <- data.frame(term1 = paste0(relationshipsFromAll$term1, "-", dataset1),
+                                        term2 = paste0(relationshipsFromAll$term2, "-", dataset2))
 
         # Create a list of random trait pairs as a control
         traitsDS1 <- paste0(cleanedTraits, "-", dataset1)
@@ -164,6 +167,7 @@ for(dataset in names(assocDataList)){
         relationshipsLister[["across"]] <- relationships
         relationshipsLister[[dataset1]] <- relationshipsFromAll1
         relationshipsLister[[dataset2]] <- relationshipsFromAll2
+        relationshipsLister[["Relacross"]] <- relationshipsFromAllAcross
         relationshipsLister[[paste0("random", dataset1)]] <- randomRelationships1
         relationshipsLister[[paste0("random", dataset2)]] <- randomRelationships2
 

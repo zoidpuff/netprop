@@ -509,7 +509,9 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
 
     ## Sample random distances from allMetric 
     excludeFromRandomInds <- unique(excludeFromRandomInds)
-    randomVec <- sample(as.vector(allMetric)[-excludeFromRandomInds],length(excludeFromRandomInds)*randomSetSize)
+    randomVec <- sample(as.vector(allMetric)[-excludeFromRandomInds],(length(excludeFromRandomInds)/length(diseasePairs))*randomSetSize)
+
+    resList[["randomVec"]] <- randomVec
 
     # Save results for the random pairs
     resList[["summaryRandom"]] <- c(summary(randomVec),"SD." = sd(randomVec), "n" = length(randomVec))
@@ -700,6 +702,13 @@ compareDistanceMetric <- function(netPropScores, distFunc, distFuncSettings, dis
 # Function that takes in a matrix coordinates and a list of pairs of rows and returns a dataframe where each row contains the coordinates of the two rows in the pair
 
 createPairDF <- function(coords,pairs) {
+    if(length(pairs) > 1) {
+        # Add a column to each pair that name the pair
+        for(name in names(pairs)) {
+            pairs[[name]] <- cbind(pairs[[name]],name)
+        }
+    }
+
     # Combine pairs list into a single dataframe and remove any duplicated rows and rows that contain ids that are not in the coords dataframe
     pairs <- do.call(rbind,pairs) %>%
                 as.data.frame() %>%
@@ -711,6 +720,7 @@ createPairDF <- function(coords,pairs) {
         resDF[i,] <- unlist(c(coords[pairs[i,1],],coords[pairs[i,2],]))
     }
     colnames(resDF) <- c("x1","y1","x2","y2")
+    resDF$pairName <- pairs$name
     return(resDF)
 }
 
@@ -776,11 +786,13 @@ safeRound <- function(x, digits = 0) {
 }
 
 
-generatePlotsFromDistCompareResults <- function(resList,diseaseMapping = NULL, densityOnly = FALSE) {
+generatePlotsFromDistCompareResults <- function(resList,diseaseMapping = NULL, densityOnly = FALSE,skipDensity = FALSE) {
 
 
     plotList <- list()
 
+    if(!skipDensity) {
+    
     plotList[["DensityPlot"]] <- ggplot(data.frame("x" = resList[["densityEstRand"]]$x, "y" = resList[["densityEstRand"]]$y), aes(x = x, y = y)) +
             geom_line() +
             #geom_line(data = data.frame("x" = resList[["densityEstRand"]]$x, "y" = resList[["densityEstRand"]]$y), aes(x = x, y = y), col = "blue") +
@@ -796,6 +808,7 @@ generatePlotsFromDistCompareResults <- function(resList,diseaseMapping = NULL, d
                                  #   xlim(min(resList[["densityEstRand"]]$x),max(resList[["densityEstRand"]]$x))
     if(densityOnly) {
         return(plotList)
+    }
     }
     
     coords <- c("cMDS","isoMDS","UMAP")
@@ -828,7 +841,7 @@ generatePlotsFromDistCompareResults <- function(resList,diseaseMapping = NULL, d
 
             plotList[[paste0("Plot_",clustAlgo,"_",coord)]]  <- ggplot() +
                     geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster",text="labels"),size=1) +
-                    #geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
+                    geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
                     #geom_text(data = clusterCenters,aes_string(x = "Dim1",y = "Dim2",label = "Cluster"),size = 3) +
                     theme_classic() +
                     labs(title = paste0(coord, " with ", clustAlgo, " Clustering"))  
