@@ -61,8 +61,8 @@ relationshipsMouse <- data.frame(term1 = paste0(mouseTraits,"-", unique(assocMou
 
 # Create a list of the association data
 
-assocDataList <- list( "assocRareGWAS" = assocRareGWAS
-                        #"assocMouseGWAS" = assocMouseGWAS
+assocDataList <- list( "assocRareGWAS" = assocRareGWAS,
+                        "assocMouseGWAS" = assocMouseGWAS
                        )
 
 
@@ -87,14 +87,26 @@ distanceMetricList <- list(
   #"jsd" = list("method" = "jsd")
 )
 
+convergeSuccess <- "notTrue"
+counter <- 0
+while(!is.logical(convergeSuccess) & counter < 100) {
+    res <- igraph::page_rank(intGraph, directed = FALSE, damping = 1, personalized = rep(1,length(V(intGraph))),algo="arpack")
+    convergeSuccess <- all.equal(res$value,1)
+    counter <- counter + 1
+}
+
+if(convergeSuccess != TRUE) {
+    stop("Failed to converge")
+} 
 
 
-normList <- list(list(NULL,NULL,"noNorm"))
-                #list(ECnormalize,list("logtransform" = FALSE),"ECnorm"),
-                #list(ECnormalize,list("logtransform" = TRUE),"ECnormLog"))
+
+normList <- list(#(list(NULL,NULL,"noNorm"),
+                list(ECnormalize,list("logtransform" = TRUE,"refVec" =res$vector ),"ECnormLog")
+                #list(ECnormalize,list("logtransform" = TRUE,"refVec" =referenceVec$avgVec ),"AverageVecLOR"),
                # list(permuteTestNormalize,list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1),"permuteNorm"),
                 #list(permuteTestParalell,list("nSamples" = 200,"ncore" = no_cores),"permuteNormDegree")
-
+)
 
 # Run the experiments in foreach loop
 for(dataset in names(assocDataList)){
@@ -108,7 +120,13 @@ for(dataset in names(assocDataList)){
                             binarize = TRUE,
                             damping = 0.85,
                             NormFunc = NORMFUNC[[1]],
-                            settingsForNormFunc = NORMFUNC[[2]])
+                            settingsForNormFunc = NORMFUNC[[2]],
+                            computeStats = list("otGenes" = unique(rareDiseaseAssocsFromOTgenetics$targetId),
+                            "evaGenes" = unique(assocDataRareDiseasesCollapsed$targetId),
+                            "mouseGenes" = unique(mouseAssocs$targetId)))
+        
+        
+    #save(netPropDataFrame, file = paste0(netPropPath,"/results/netPropDataFrame_ecdMouse_ecnorm.rdata"))
 
         
         # Remove suffixes from the rownames of netprop

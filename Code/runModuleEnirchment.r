@@ -9,7 +9,7 @@ registerDoParallel(cl)
 
 netPropPath <- "/cluster/home/gmagnusson/netprop"
 
-load(paste0(netPropPath,"/results/fgseaData.rdata"))
+load(paste0(netPropPath,"/results/fgseaData_ecdGwasMouse.rdata"))
 genesets <- inputForFGSEA$genesets
 netPropRes <- as.data.frame(inputForFGSEA$netPropRes)
 netPropRes$traitID <- rownames(inputForFGSEA$netPropRes)
@@ -41,4 +41,4 @@ rm(inputForFGSEA)
  }
 
 
-save(fgsea, file = paste0(netPropPath,"/results/fgseaRes.rdata"))
+save(fgsea, file = paste0(netPropPath,"/results/fgseaRes_ecdGwasMouse.rdata"))

@@ -540,7 +540,21 @@ load(paste0(netPropPath,"/results/netPropDataFrame_ecnorm.rdata"))
 rm(assocDataBySourceDirIndiMergedFiltered)
 ```
 
+```{r load data}
+load(file = paste0(netPropPath,"/results/netPropDataFrame_ecdGwas_ecnorm.rdata")) # netPropDataFrame
+ecdGWASDF <- netPropDataFrame[["netProp"]]
+load(file = paste0(netPropPath,"/results/netPropDataFrame_ecdMouse_ecnorm.rdata")) # netPropDataFrame
+ecdMouseDF <- netPropDataFrame[["netProp"]]
 
+netProp <- rbind(ecdGWASDF, ecdMouseDF)
+# Remove duplicate rows based in rownames
+netProp <- netProp[!duplicated(rownames(netProp)),]
+save(netProp, file = paste0(netPropPath,"/results/netPropDataFrame_ecdGwas_ecdMouse_ecnorm.rdata"))
+
+inputForFGSEA <- list("netPropRes" = netProp, "genesets" = genesets)
+save(inputForFGSEA, file = paste0(netPropPath,"/results/fgseaData_ecdGwasMouse.rdata"))
+
+```
 
 
 ```{r load data}
