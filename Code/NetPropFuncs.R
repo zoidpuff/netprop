@@ -370,7 +370,9 @@ permuteTestNormalize <- function(network, seedVector, netPropTRUE, settings) {
 # Returns a list of lists, each list contains network propagation scores for a 
 
 runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 10),
-                         binarize = TRUE, damping = 0.85, NormFunc = NULL, settingsForNormFunc = NULL,returnSeedVec = FALSE) {
+                         binarize = TRUE, damping = 0.85, NormFunc = NULL,
+                         settingsForNormFunc = NULL,returnSeedVec = FALSE,
+                         computeStats = NULL) {
     
     # Register the parallel backend
    # no_cores <- 4
@@ -397,10 +399,28 @@ runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 
 
     # For each disease in the association data
     resList <- list()
+    resListStats <- list()
       for(trait in unique(assocDataFilt$diseaseId)) {
 
         # Filter the association data for the current disease
         assocDataFiltTemp <- assocDataFilt %>% filter(diseaseId == trait)
+
+        # If computeStats is not null gather the stats for the association data
+        if(!is.null(computeStats)) {
+            traitTempRes <- list("NGenes" = nrow(assocDataFiltTemp), "Genes" = assocDataFiltTemp$targetId)
+            # if there is a column called datasourceId add it to traitTempRes
+            if("datasourceId" %in% colnames(assocDataFiltTemp)) {
+                traitTempRes[["Datasources"]] <- assocDataFiltTemp$datasourceId
+            }
+            for(geneList in names(computeStats)) {
+                listSpecificGenes <- assocDataFiltTemp %>% filter(targetId %in% computeStats[[geneList]])
+                traitTempRes[[geneList]] <- list("Genes" = listSpecificGenes$targetId,
+                                                "NGenes" = nrow(listSpecificGenes),
+                                                "Prop" = nrow(listSpecificGenes)/nrow(assocDataFiltTemp))
+
+            }
+            resListStats[[trait]] <- traitTempRes
+        }
 
         # Create a seed list from the association data
         seedList <- list(assocDataFiltTemp$targetId, assocDataFiltTemp$score, rep(TRUE,nrow(assocDataFiltTemp)))
@@ -431,8 +451,24 @@ runNetProp <- function(network, assocData, cutoff = c("value" = 0.5, "number" = 
 
     }
 
+   # if(length(resList) == 1) {
+   #     return(resList[[1]])
+   # }
+   # return(do.call(rbind,resList))
 
-    return(do.call(rbind,resList))
+   if(!is.null(computeStats)) {
+       if(length(resList) == 1) {
+              return(list("netProp" = resList[[1]], "stats" = resListStats))
+         } else {
+              return(list("netProp" = do.call(rbind,resList), "stats" = resListStats))
+         }
+   } else  {
+       if(length(resList) == 1) {
+              return(resList[[1]])
+         } else {
+              return(do.call(rbind,resList))
+         }
+   }
 
 }
 
@@ -838,22 +874,22 @@ generatePlotsFromDistCompareResults <- function(resList,diseaseMapping = NULL, d
             coordDF$Cluster <- as.factor(as.character(coordDF$Cluster))
             
             # Remove the suffix after "-" in the disease names
-            cleanedRownames <- rownames(coordDF) %>% strsplit("-") %>% sapply(function(x) x[1])
+            #cleanedRownames <- rownames(coordDF) %>% strsplit("-") %>% sapply(function(x) x[1])
 
             # Get the suffixes of the disease names
-            suffixes <- rownames(coordDF) %>% strsplit("-") %>% sapply(function(x) x[2])
+            #suffixes <- rownames(coordDF) %>% strsplit("-") %>% sapply(function(x) x[2])
 
-            coordDF$labels <- paste0(rownames(coordDF), " (", idToName[cleanedRownames], ")")
+            coordDF$labels <- paste0(rownames(coordDF), " (", idToName[rownames(coordDF)], ")")
 
-            coordDF$datasets <- suffixes
+            #coordDF$datasets <- suffixes
 
             plotList[[paste0("Plot_",clustAlgo,"_",coord)]]  <- ggplot() +
-                    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "suffixes",text="labels"),size=1) +
+                    geom_point(data = coordDF,aes_string(x = "Dim1",y = "Dim2",color = "Cluster",text="labels",key = "labels"),size=1) +
                     #geom_segment(data = pairDF,aes_string(x = "x1",y = "y1",xend = "x2",yend = "y2"),alpha = 0.03) +
                     #geom_text(data = clusterCenters,aes_string(x = "Dim1",y = "Dim2",label = "Cluster"),size = 3) +
                     theme_classic() +
-                    labs(title = paste0(coord, " with ", clustAlgo, " Clustering"))  
-                    #coord_cartesian(xlim = quantile(coordDF$Dim1,c(0.01,0.99)),ylim = quantile(coordDF$Dim2,c(0.01,0.99))) 
+                    labs(title = paste0(coord, " with ", clustAlgo, " Clustering"))  +
+                    coord_cartesian(xlim = quantile(coordDF$Dim1,c(0.01,0.99)),ylim = quantile(coordDF$Dim2,c(0.01,0.99))) 
 
              }
     }
@@ -1212,4 +1248,224 @@ analyzeDistance <- function(allMetric,diseasePairs,randomSetSize,preferredCluste
     return(resList)
 
 
+}
+
+
+
+# Function that takes in interaction graph and a list of seed genes
+
+visualizeClusters <- function(network,
+                                assocDF,
+                                topQuantileCuttoff = 0.75,
+                                assocGeneList,
+                                cuttoff = c(0.1,1),
+                                damping = 0.85,
+                                NormFunc = NULL,
+                                settingsForNormFunc = NULL) {
+
+
+# run network propagation
+netPropRes <- runNetProp(network,
+                        assocData = assocDF,
+                        binarize = TRUE,
+                        damping = damping,
+                        NormFunc = NormFunc,
+                        settingsForNormFunc = settingsForNormFunc)
+
+# Get the top quantile of the network propagation scores
+topQuantileGenes <- V(network)$name[netPropRes >= quantile(netPropRes$vector,topQuantileCuttoff)]	
+
+# Create a subgraph of the network with the top quantile of the network propagation scores
+subGraph <- igraph::induced_subgraph(network,which(V(network)$name %in% topQuantileGenes))
+
+# Cluster the graph with leiden clustering
+
+clusteringRes <- list()
+
+resolutions <- c(seq(0.005,0.1,0.01),seq(0.15,1,0.1))
+
+for(res in resolutions) {
+    clusteringRes[[as.character(res)]] <- igraph::cluster_leiden(subGraph,
+                                                resolution_parameter = res,
+                                                n_iterations = 40)$membership
+}
+
+# Get the number of clusters that have atleast 3 genes for each resolution
+nClusters <- sapply(clusteringRes,function(x) sum(table(x) >= 3))
+
+prefferdNClust <- sqrt(vcount(subGraph))
+
+# Select the results that have the number of clusters closest to sqrt(nodes)
+memberships <- clusteringRes[[as.character(resolutions[which.min(abs(nClusters - prefferdNClust))])]]
+
+
+
+communityDF <- data.frame( unique(communities$membership),
+                            sapply(unique(memberships), function(x) sum(assocGeneList[[1]] %in% V(subGraph)$name[memberships == x])/sum(communities$membership == x)),
+                            sapply(unique(memberships), function(x) sum(assocGeneList[[1]] %in% V(subGraph)$name[memberships == x])/sum(communities$membership == x)))
+
+
+
+}
+
+
+# Get most frequent top level pathway terms for a set of genes
+
+getFrequentGeneAnnotationsTerms <- function(genes, geneAnnotations,topN) {
+    topLevelsTerms <- list()
+    indPathways <- list()
+    chromsomes <- list()
+    subCellLocations <- list()
+    for(gene in genes) {
+        if(!gene %in% geneAnnotations$id)  {
+            next
+        }
+        chromsomes[[gene]] <- geneAnnotations[which(geneAnnotations$id == gene),]$genomicLocation[[1]]$chromosome
+
+        # Get lists of pathways and subcellular locations
+        listOfPathways <- geneAnnotations[which(geneAnnotations$id == gene),]$pathways[[1]]
+        listOfSubCellularLocations <- geneAnnotations[which(geneAnnotations$id == gene),]$subcellularLocations[[1]]
+        
+        #For each item in pathway list, get the pathway and the topLevelTerm
+        if(!is.list(listOfPathways)){
+            topLevelsTerms[[gene]] <- NA
+            indPathways[[gene]] <- NA
+            next
+        }
+        tempTopLevels <- c()
+        tempIndPathways <- c()
+        for(pathway in listOfPathways) {
+            tempTopLevels <- c(tempTopLevels,pathway$topLevelTerm)
+            tempIndPathways <- c(tempIndPathways,pathway$pathway)
+        }
+        topLevelsTerms[[gene]] <- tempTopLevels
+        indPathways[[gene]] <- tempIndPathways
+
+        # For each item in subcellular location list, get the subcellular location
+        if(!is.list(listOfSubCellularLocations)){
+            subCellLocations[[gene]] <- NA
+            next
+        }
+        tempSubCellLocations <- c()
+        for(subCellLocation in listOfSubCellularLocations) {
+            tempSubCellLocations <- c(tempSubCellLocations,subCellLocation$location)
+        }
+        subCellLocations[[gene]] <- tempSubCellLocations
+
+
+    }
+    temp <- list("topLevels" = table(unlist(topLevelsTerms))/length(unlist(topLevelsTerms)),
+                "indPathways" = table(unlist(indPathways))/length(unlist(indPathways)),
+                "chromsomes" = table(unlist(chromsomes))/length(unlist(chromsomes)),
+                "subCellLocations" = table(unlist(subCellLocations))/length(unlist(subCellLocations)))
+    
+    # order the top level terms by frequency and only return the topN
+    temp[["topLevels"]] <- temp[["topLevels"]][order(temp[["topLevels"]],decreasing = TRUE)] %>% head(topN[1])
+    temp[["indPathways"]] <- temp[["indPathways"]][order(temp[["indPathways"]],decreasing = TRUE)] %>% head(topN[2])
+    temp[["chromsomes"]] <- temp[["chromsomes"]][order(temp[["chromsomes"]],decreasing = TRUE)] %>% head(topN[3])
+    temp[["subCellLocations"]] <- temp[["subCellLocations"]][order(temp[["subCellLocations"]],decreasing = TRUE)] %>% head(topN[4])
+
+    return(temp)
+}
+
+clusterLargeClusters <- function(graph, clustering, n, consensus = FALSE) {
+    largeClusters <- names(table(clustering))[table(clustering) > n]
+    modifiedClustering <- clustering
+    
+    for (cluster in largeClusters) {
+        subGraph <- igraph::induced_subgraph(graph, which(clustering == cluster))
+        if(consensus) {
+            subMembership <- consensus_clustering_walktrap(subGraph, 30)
+        } else {
+            subMembership <- igraph::cluster_walktrap(subGraph)$membership
+        }
+        
+        # Update the modified clustering with the subcluster membership
+        modifiedClustering[clustering == cluster] <- paste0(cluster, ".", subMembership)
+    }
+    
+    return(modifiedClustering)
+}
+
+consensus_clustering <- function(g, n_iter, subsample_size, resolution) {
+  # Initialize partition matrix
+  partitions <- list()
+  
+  # Make a new grapgh with same nodes and no edges
+  consensus_graph <- make_empty_graph(vcount(g))
+  
+  for (i in 1:n_iter) {
+    # Randomly subsample edges
+    edges <- sample(E(g), round(subsample_size*ecount(g)))
+    subgraph <- subgraph.edges(g, eids = edges,delete.vertices = FALSE)
+
+    #Ensure that the subgraph is has same number of nodes as the original graph
+    if(vcount(subgraph) != vcount(g)){stop("Subgraph has different number of nodes than the original graph") }
+    # Randomly sample resolution parameter for leiden clustering
+    #sampleRes <- -1
+    #while(sampleRes < 0) {
+    #    sampleRes <- rnorm(1,mean = resolution,sd = 0.005)
+    #}
+
+    res <- sample(resolution,1)
+    res <- res + rnorm(1,mean = 0,sd = res/10)
+    if(res < 0) {res <- 0.1}
+    
+    # Perform Leiden clustering
+    communities <- igraph::cluster_leiden(subgraph, n_iterations =30, resolution = res)
+
+    # Break up large clusters with walktrap clustering (several times)
+    communitiesAdj <- clusterLargeClusters(subgraph,communities$membership,300)
+    communitiesAdj <- clusterLargeClusters(subgraph,communitiesAdj,300)
+    communitiesAdj <- clusterLargeClusters(subgraph,communitiesAdj,200)
+    partitions[[i]] <- communitiesAdj
+
+   }
+   partitions <- do.call(rbind,partitions)
+
+    # Update the consensus graph with the edge weights (this takes a loong time)
+    for (v1 in 1:vcount(g)) {
+        for (v2 in v1:vcount(g)) {
+            if (v1 != v2) {
+                val <- sum(partitions[,v1] == partitions[,v2])/n_iter
+                if (val > 0.3) {
+                    consensus_graph <- add_edges(consensus_graph, c(v1, v2), weight = val)
+                } 
+            } 
+        }
+    }
+  #consensus_clustering <- igraph::cluster_leiden(consensus_graph, n_iterations = 100, resolution = resolution)
+  #return(list(consensus_clustering,consensus_graph))
+  return(consensus_graph)
+}
+
+
+consensus_clustering_walktrap <- function(g, n_iter) {
+  # Initialize partition matrix
+  partitions <- list()
+  
+  # Make a new graph with same nodes and no edges
+  consensus_graph <- make_empty_graph(vcount(g))
+  
+  for (i in 1:n_iter) {
+    # Perform walktrap clustering
+    communities <- igraph::cluster_walktrap(g)
+    partitions[[i]] <- communities$membership
+
+   }
+   partitions <- do.call(rbind,partitions)
+
+    # Update the consensus graph with the weighted edges only if the edge is present in more than 50% of the partitions
+    for (v1 in 1:vcount(g)) {
+        for (v2 in v1:vcount(g)) {
+            if (v1 != v2) {
+                val <- sum(partitions[,v1] == partitions[,v2])/n_iter
+                if (val > 0.5) {
+                    consensus_graph <- add_edges(consensus_graph, c(v1, v2), weight = val)
+                } 
+            } 
+        }
+    }
+  consensus_clustering <- igraph::cluster_walktrap(consensus_graph)
+  return(consensus_clustering$membership)
 }

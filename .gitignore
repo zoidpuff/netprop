@@ -47,3 +47,5 @@ internalStarted.txt
 *.svg
 *.html
 /resultsWasInCode
+/figures
+/Code/lykill.txt

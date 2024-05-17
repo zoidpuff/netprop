@@ -146,11 +146,26 @@ mergedDataFilteredMerged <- mergedDataFiltered %>%
             ungroup() %>%
             distinct()
 
+
+# Do this in the same way but retain the datasourceId by concatenating them
+mergedDataFilteredMerged <- mergedDataFiltered %>% 
+            select(diseaseId, targetId, datasourceId, score) %>%
+            group_by(diseaseId, targetId) %>% 
+            mutate(datasourceIdMerged = paste(datasourceId, collapse = ",")) %>%
+            ungroup() %>%
+            select(diseaseId, targetId, datasourceIdMerged, score) %>%
+            group_by(diseaseId, targetId, datasourceIdMerged) %>%
+            summarise(score = max(score)) %>%
+            ungroup() %>%
+            distinct()
+
 mergedDataFilteredMerged$diseaseName <- idToName[mergedDataFilteredMerged$diseaseId]
 
 mergedDataFilteredMerged <- mergedDataFilteredMerged %>% filter(!(diseaseId %in% tooGeneric))
 
-write.csv(mergedDataFilteredMerged, paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered.csv"), row.names = FALSE)
+# Rename datasourceIdMerged to datasourceId
+names(mergedDataFilteredMerged)[names(mergedDataFilteredMerged) == "datasourceIdMerged"] <- "datasourceId"
+write.csv(mergedDataFilteredMerged, paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered_withSource.csv"), row.names = FALSE)
 
 
 

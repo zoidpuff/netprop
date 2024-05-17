@@ -1,0 +1,50 @@
+---
+title: "A Map of Human Traits"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+netPropPath <- "/home/gummi/netprop"
+load("/home/gummi/netprop/masterDistCompareNew.rdata")
+library(ggplot2)
+library(kableExtra)
+library(dplyr)
+library(plotly)
+library(kableExtra)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+load("/home/gummi/netprop/data/diseasesNew.rdata")
+diseaseMapping <- diseaseDF
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE) 
+
+```
+
+
+
+```{r fig.height=8, fig.width=10, warning=FALSE}
+
+plots <- generatePlotsFromDistCompareResults(masterRes[["assocDataBySourceDirIndiMergedFiltered"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]],diseaseMapping) 
+
+#umapPlot <- plots[["Plot_Leiden_UMAP"]]
+#save(umapPlot, file = "/home/gummi/netprop/umapPlot.rdata")
+
+a <- plotly::ggplotly(plots[["Plot_Leiden_UMAP"]])
+
+
+```
+
+
+
+```{r warning=FALSE}
+
+
+df <- masterRes[["assocDataBySourceDirIndiMergedFiltered"]][["noNorm"]][["0"]][["FALSE"]][["FALSE"]][["kendall"]][["legendDF_Leiden"]][,c("Clusters","Counts","Entropy","Ancestors")]
+
+kable(df, digits = 2, format = "html", row.names = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = T,
+                font_size = 15) %>%
+   scroll_box(height = "300px")
+
+
+```
+

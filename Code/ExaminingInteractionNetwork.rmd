@@ -1,0 +1,653 @@
+```{r load funcs}
+
+netPropPath <- '/home/gummi/netprop'
+
+library(igraph)
+library(dplyr)
+source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
+library(ggvenn)
+library(ggplot2)
+
+
+# Load interaction graph                                              
+load(paste0(netPropPath,"/data/intGraph.rdata"))
+```
+
+
+```{r load data}
+
+# Load the data
+#assocDataBySource <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirect.csv"), stringsAsFactors = FALSE)
+
+assocDataBySource <- read.csv(paste0(netPropPath,"/data/newData/associationByDatasourceMerged.csv"), stringsAsFactors = FALSE)
+# diseaseDF
+load(paste0(netPropPath,"/data/diseases.rdata"))
+idToName <- setNames(diseaseDF$name, diseaseDF$id)
+
+```
+
+```{r load data}
+scoreCutoffOrphanet <- 0.5
+scoreCutoffEVA <- 0.5
+scoreCutoffOT <- 0.4
+scoreCutoffIMPC <- 0.65
+# Remove the disease terms that are too generic
+tooGeneric <- c("EFO_0000508", "EFO_0001444", "OTAR_0000018", "EFO_0004747",
+                "EFO_0004503", "EFO_0000651", "HP_0000118", "EFO_0004529",
+                "EFO_0005278", "EFO_0007937", "EFO_0004303", "Orphanet_71859",
+                "EFO_0006843", "Orphanet_183530", "GO_0008150", "EFO_0005105",
+                "EFO_0004298", "EFO_0000719", "HP_0100543", "EFO_0004311" , "EFO_0004530",
+                "EFO_0000246", "EFO_0004557", "MONDO_0000429", "MONDO_0019755",
+                "EFO_1000017")
+
+
+
+# Analyis for rare diseases????
+assocDataRareDiseases <- assocDataBySource %>% filter(datasourceId %in% c("orphanet","eva")) 
+# Filter out orphanet assoications that are less then or equal to 0.5
+assocDataRareDiseases <- assocDataRareDiseases %>% filter(!(datasourceId == "orphanet" & score <= scoreCutoffOrphanet))
+# Filter out eva tha assocationas that are less then 0.5
+assocDataRareDiseases <- assocDataRareDiseases %>% filter(!(datasourceId == "eva" & score <= scoreCutoffEVA))
+
+#"clingen" "eva_somatic"
+assocDataRareDiseases$name <- idToName[assocDataRareDiseases$diseaseId]
+
+assocDataRareDiseasesCollapsed <- assocDataRareDiseases[,c("score","diseaseId","targetId")] %>% 
+  group_by(targetId,diseaseId) %>% 
+  summarise(score = max(score)) %>%
+    ungroup()
+
+
+rareDiseaseAssocsFromOTgenetics <- assocDataBySource %>% 
+          filter(datasourceId == "ot_genetics_portal") %>%
+          filter(score > scoreCutoffOT)
+
+mouseAssocs <- filter(assocDataBySource, datasourceId == "impc" & score > scoreCutoffIMPC)
+
+
+rareDiseaseAssocsFromOTgenetics$source <- "ot_genetics_portal"
+assocDataRareDiseasesCollapsed$source <- "eva, orphanet"
+mouseAssocs$source <- "impc"
+
+assocDataRareDiseasesCollapsed <- assocDataRareDiseasesCollapsed %>% filter(!(diseaseId %in% tooGeneric))
+rareDiseaseAssocsFromOTgenetics <- rareDiseaseAssocsFromOTgenetics %>% filter(!(diseaseId %in% tooGeneric))
+mouseAssocs <- mouseAssocs %>% filter(!(diseaseId %in% tooGeneric))
+
+
+# Compute the overlap using ggvenn for the diseaseIds
+vennData <- list(unique(rareDiseaseAssocsFromOTgenetics$diseaseId), unique(assocDataRareDiseasesCollapsed$diseaseId), unique(mouseAssocs$diseaseId))
+names(vennData) <- c("ot_genetics_portal", "eva, orphanet", "impc")
+
+#ggvenn(vennData)
+
+# Compute the overlap using ggvenn for the targetIds
+vennData <- list(unique(rareDiseaseAssocsFromOTgenetics$targetId), unique(assocDataRareDiseasesCollapsed$targetId), unique(mouseAssocs$targetId))
+names(vennData) <- c("ot_genetics_portal", "eva, orphanet", "impc")
+vennData <- vennData[1:2]
+#ggvenn(vennData)
+
+# Get the intersection of diseaseIds between the ot_genetics_portal and eva/orphanet
+intersectDiseaseIds <- intersect(unique(rareDiseaseAssocsFromOTgenetics$diseaseId), unique(assocDataRareDiseasesCollapsed$diseaseId))
+
+# Filter
+
+```
+
+
+```{r load data}
+
+
+summary(igraph::degree(intGraph, v = V(intGraph)$name %in% unique(rareDiseaseAssocsFromOTgenetics$targetId)))
+
+summary(igraph::degree(intGraph, v = V(intGraph)$name %in% unique(assocDataRareDiseasesCollapsed$targetId)))
+
+summary(igraph::degree(intGraph, v = V(intGraph)$name %in% unique(mouseAssocs$targetId)))
+
+degreeData <- data.frame(degree = igraph::degree(intGraph, v = V(intGraph)$name %in% unique(rareDiseaseAssocsFromOTgenetics$targetId)),
+                         dataset = "OT Genetics (L2G > 0.4)")
+
+degreeData <- rbind(degreeData,
+                        data.frame(degree = igraph::degree(intGraph, v = V(intGraph)$name %in% unique(assocDataRareDiseasesCollapsed$targetId)),
+                                    dataset = "EVA/Orph (Score > 0.5)"))
+
+degreeData <- rbind(degreeData,
+                        data.frame(degree = igraph::degree(intGraph, v = V(intGraph)$name %in% unique(mouseAssocs$targetId)),
+                                    dataset = "IMPC (Score > 0.65)"))
+
+degreePlot <- ggplot(degreeData, aes(x = degree, fill = dataset)) +
+                  geom_density(alpha = 0.5) +
+                  ggtitle("Distribution of Node Degrees") + 
+                  ylab("Density") + 
+                  xlab("Node Degree") + 
+                  theme_classic() +
+                  guides(fill=guide_legend(title="Genes in:")) + 
+                  scale_x_log10()
+
+
+# Set dataset as a factor with ot first
+degreeData$dataset <- factor(degreeData$dataset, levels = c("OT Genetics (L2G > 0.4)", "EVA/Orph (Score > 0.5)", "IMPC (Score > 0.65)"))
+
+
+linearModel <- lm(log(degree) ~ dataset, data = degreeData)
+summary(linearModel)
+```
+
+
+```{r load data}
+#library(ReactomePA)
+load(paste0(netPropPath,"/data/geneAnnosLessCols.rdata"))
+```
+
+```{r load data}
+# Get the list of unique targetIds from the ot_genetics_portal and eva/orphanet when filter for overlapping diseaseIds
+otGenes <- unique(rareDiseaseAssocsFromOTgenetics$targetId[rareDiseaseAssocsFromOTgenetics$diseaseId %in% intersectDiseaseIds])
+evaGenes <- unique(assocDataRareDiseasesCollapsed$targetId[assocDataRareDiseasesCollapsed$diseaseId %in% intersectDiseaseIds])
+
+intGraphSub <- intGraph
+rm(intGraph)
+
+
+```
+
+
+
+```{r Test resolution parameters and run consensus clustering}
+
+
+set.seed(123)
+
+# Testing the resolution parameter
+#plotList <- list()
+#resolutionList <- c(seq(0.001,0.1,0.005),seq(0.1,1,0.1))
+#
+#for(res in resolutionList) {
+#    communities <- igraph::cluster_leiden(intGraphSub,n_iterations = 30,resolution = res)
+#    dfTemp  <- data.frame(resolution = res, 
+#                          numCommunities = length(unique(communities$membership)),
+#                          communitySizes = as.numeric(table(communities$membership)))
+#    plotList[[as.character(res)]] <- dfTemp
+#}   
+#
+#plotDF <- do.call(rbind, plotList)
+#
+## Plot facted histogram of community sizes
+#communitySizePlot <- ggplot(plotDF, aes(x = communitySizes)) +
+#  geom_histogram(alpha = 0.5) +
+#  ggtitle("Distribution of Community Sizes") + 
+#  ylab("Density") + 
+#  xlab("Community Size") + 
+#  theme_classic() +
+#  facet_wrap(~resolution,scales = "free_y") +
+#  scale_x_log10()
+
+#ggsave(paste0(netPropPath,"/figures/CommunitySizePlot.png"), communitySizePlot, width = 10, height = 10, units = "in")
+
+system.time(
+conMat <- consensus_clustering(intGraph, n_iter = 333, subsample_size = 0.8, resolution = 0.03)
+)
+
+
+```
+
+```{r load data}
+
+# Run clustering on the consensus graph
+
+#save(conMat, file = paste0(netPropPath,"/data/conMat.rdata"))
+#load(paste0(netPropPath,"/data/conMat.rdata"))
+load(paste0(netPropPath,"/results/conMatBigRes.rdata"))
+#Convert the conMat graph object to undirected graph
+
+# Get summary of weights
+summary(E(conMat)$weight)
+
+conMatUndir <- as.undirected(conMat)
+
+communities <- igraph::cluster_leiden(conMatUndir, n_iterations = 200,resolution = 0.08,weights = E(conMatUndir)$weight)
+consensusClustersReclustered <- clusterLargeClusters(conMatUndir, communities$membership, 300, consensus = TRUE)	
+consensusClustersReclustered <- clusterLargeClusters(conMatUndir, consensusClustersReclustered, 300, consensus = TRUE)
+
+clusterMapping <- setNames(1:length(unique(consensusClustersReclustered)), unique(consensusClustersReclustered))
+
+communities$membership  <- unname(clusterMapping[consensusClustersReclustered])
+
+#str(consensus_clusters)
+length(unique(communities$membership))
+summary(as.numeric(table(communities$membership)))
+
+# Plot the distribution of community sizes with ggplot density plot
+communitySizes <- data.frame( size = table(communities$membership))
+names(communitySizes) <- c("clusterID","size")
+
+ggplot(communitySizes, aes(x = size)) +
+  geom_histogram(alpha = 0.5) +
+  ggtitle("Distribution of Community Sizes") + 
+  ylab("Density") + 
+  xlab("Community Size") + 
+  theme_classic() +
+    scale_x_log10()
+
+
+#communities <- igraph::cluster_leiden(intGraphSub,n_iterations = 200,resolution = 0.056)
+
+# Create Mapping
+
+
+#communities$membership <- FixedIDs
+
+#write.csv(communityDF, paste0(netPropPath,"/data/communityDF.csv"), row.names = FALSE)
+save(communities, file = paste0(netPropPath,"/data/communitiesHighRes.rdata"))
+#load(file = paste0(netPropPath,"/data/communities.rdata"))
+#load(intGraphSub, file = paste0(netPropPath,"/data/intGraphSub.rdata"))
+```
+
+
+```{r load data}
+
+# Create a cluster annotation dataframe
+
+communityDF <- data.frame(community = unique(communities$membership),
+                            #genes = paste0(sapply(unique(communities$membership), function(x) V(intGraphSub)$name[communities$membership == x]), collapse = ","),
+                            ratioOT = sapply(unique(communities$membership), function(x) sum(otGenes %in% V(intGraphSub)$name[communities$membership == x])/sum(communities$membership == x)),
+                            ratioEVA = sapply(unique(communities$membership), function(x) sum(evaGenes %in% V(intGraphSub)$name[communities$membership == x])/sum(communities$membership == x)),
+                            overlap = sapply(unique(communities$membership), function(x) sum(V(intGraphSub)$name[communities$membership == x] %in% evaGenes & V(intGraphSub)$name[communities$membership == x] %in% otGenes )/sum(communities$membership == x)))
+
+
+communityDF$bias <- communityDF$ratioOT - communityDF$ratioEVA
+
+
+# Add a color column from the ratio
+#EVA HIGH BLUE AND OT HIGH RED
+colfunc <- colorRampPalette(c("blue","gray", "red"))
+# Create a breaks vector that has 0 in the middle and ranges from -1 to 1
+breaks <- seq(-1.01,1.11,0.1)
+communityDF$color <- cut(communityDF$bias, breaks = breaks, labels = colfunc(length(breaks)-1))
+communityDF$size <- as.numeric(table(communities$membership)[as.character(communityDF$community)])
+
+#write.csv(communityDF, paste0(netPropPath,"/data/communityDF_highres.csv"), row.names = FALSE)
+#save(communities, file = paste0(netPropPath,"/data/communities_highres.rdata"))
+#save(intGraphSub, file = paste0(netPropPath,"/data/intGraphSub.rdata"))
+
+
+load(paste0(netPropPath,"/results/enrichRes_highres.rdata"))
+
+
+#enrichResTemp <- enrichRes
+#enrichRes <- enrichResTemp
+ 
+resFreqAna <- list()
+resFreqAnaText <- list()
+llmStrings <- list()
+enrichedGoTerms <- list()
+enrichedPathways <- list()
+
+
+for( i in communityDF$community) {
+    genes <- V(intGraphSub)$name[communities$membership == i]
+
+    res <- getFrequentGeneAnnotationsTerms(genes, geneAnnos,c(3,10,3,3))
+
+    # Take the table output and create a string that is the number in brackets followed by the term
+
+    pathwayString <- paste0(paste0(names(head(res$indPathways,5)), " (", format(head(res$indPathways,5),digits = 2), ")"), collapse = " <br> ")
+    topLevelPathwayString <- paste0(paste0(names(res$topLevels), " (", format(res$topLevels,digits = 2), ")"), collapse = " <br> ")
+    chromsomesString <- paste0(paste0(names(res$chromsomes), " (", format(res$chromsomes,digits = 2), ")"), collapse = " <br> ")
+    subCellularLocationString <- paste0(paste0(names(res$subCellLocations), " (", format(res$subCellLocations,digits = 2), ")"), collapse = " <br> ")
+
+    # filter the enrichRes obj for enriched terms for community i
+    enrichedGOBP <- filter(enrichRes, i == cluster, db == "GOBP")
+    enrichedGOCC <- filter(enrichRes, i == cluster, db == "GOCC")
+    enrichedGOMF <- filter(enrichRes, i == cluster, db == "GOMF")
+    enrichedPathways <- filter(enrichRes, i == cluster, db == "Reactome")
+
+    enrichedGOBPString <- paste0(paste0(head(enrichedGOBP$Description,10), " (", format(head(enrichedGOBP$p.adjust,15),digits = 2), ")"), collapse = " <br> ")
+    enrichedGOCCString <- paste0(paste0(head(enrichedGOCC$Description,10), " (", format(head(enrichedGOCC$p.adjust,15),digits = 2), ")"), collapse = " <br> ")
+    enrichedGOMFString <- paste0(paste0(head(enrichedGOMF$Description,10), " (", format(head(enrichedGOMF$p.adjust,15),digits = 2), ")"), collapse = " <br> ")
+    enrichedPathwaysString <- paste0(paste0(head(enrichedPathways$Description,10), " (", format(head(enrichedPathways$p.adjust,15),digits = 2), ")"), collapse = " <br> ")
+
+    resFreqAnaText[[i]] <- list(pathwayString = pathwayString,
+                                topLevelPathwayString = topLevelPathwayString,
+                                chromsomesString = chromsomesString,
+                                subCellularLocationString = subCellularLocationString,
+                                enrichedPathwaysString = enrichedPathwaysString,
+                                enrichedGOBPString = enrichedGOBPString,
+                                enrichedGOCCString = enrichedGOCCString,
+                                enrichedGOMFString = enrichedGOMFString)
+
+    resFreqAna[[i]] <- res
+
+    #pathwayString <- paste0(paste0(names(res$indPathways), " (", format(res$indPathways,digits = 2), ")"), collapse = " \n ")
+    #topLevelPathwayString <- paste0(paste0(names(res$topLevels), " (", format(res$topLevels,digits = 2), ")"), collapse = " \n ")
+   # chromsomesString <- paste0(paste0(names(res$chromsomes), " (", format(res$chromsomes,digits = 2), ")"), collapse = " \n ")
+   # subCellularLocationString <- paste0(paste0(names(res$subCellLocations), " (", format(res$subCellLocations,digits = 2), ")"), collapse = " <\n ")
+    enrichedGOBPString <- paste0(paste0(head(enrichedGOBP$Description,15)), collapse = " \n ")
+    enrichedGOCCString <- paste0(paste0(head(enrichedGOCC$Description,5)), collapse = " \n ")
+   # enrichedGOMFString <- paste0(paste0(head(enrichedGOMF$Description,30)), collapse = " \n ")
+    enrichedPathwaysString <- paste0(paste0(head(enrichedPathways$Description,25)), collapse = " \n ")
+
+
+    llmStrings[[i]] <- paste0("I have cluster of genes that has the have the following enriched annotation terms in descending order or significance : \n",
+                        "Enriched GO Biological Process Terms: \n", enrichedGOBPString, "\n",
+                        "Enriched Reactome Pathways: \n", enrichedPathwaysString, "\n",
+                        "Enriched Sub Cellular Locations: \n", enrichedGOCCString,"\n",
+                        "I want you make very short title for this cluster using the enriched term info, summarizing it in a cohesive way. Only respond with the propsed title for this specific cluster.")
+
+    
+   
+}
+
+
+
+
+communityDF$topLevelPathwayString <- sapply(resFreqAnaText, function(x) x$topLevelPathwayString)
+communityDF$pathwayString <- sapply(resFreqAnaText, function(x) x$pathwayString)
+communityDF$chromsomesString <- sapply(resFreqAnaText, function(x) x$chromsomesString)
+communityDF$subCellularLocationString <- sapply(resFreqAnaText, function(x) x$subCellularLocationString)
+communityDF$enrichedGOBPString <- sapply(resFreqAnaText, function(x) x$enrichedGOBPString)
+communityDF$enrichedGOCCString <- sapply(resFreqAnaText, function(x) x$enrichedGOCCString)
+communityDF$enrichedGOMFString <- sapply(resFreqAnaText, function(x) x$enrichedGOMFString)
+communityDF$enrichedPathwaysString <- sapply(resFreqAnaText, function(x) x$enrichedPathwaysString)
+
+
+```
+
+```{r load data}
+
+# Get the summary if the number of characters in the llmStrings
+llmStringsLength <- sapply(llmStrings, function(x) nchar(x))
+summary(as.numeric(llmStringsLength))
+
+# Count the number of clusters that have more than 376 characters
+sum(llmStringsLength > 410)
+
+# Create cluster names with gpt
+library(openai)
+
+clusterTitles <- list()
+
+for(i in 1:length(llmStrings)) {
+    string <- llmStrings[[i]]
+
+    if(nchar(string) < 410) {
+        clusterTitles[[i]] <- as.character(communityDF$community[i])
+    } else {
+   # if(i < 20000) {
+    #    #print("Already done")
+     #   next
+      #  }
+    completion <- openai::create_chat_completion(model = "gpt-4-turbo", 
+                                            message = list(list("role" = "user", "content" = string))
+                                            )
+    clusterTitles[[i]] <- completion$choices$message.content
+    }
+}
+
+# Save the clusterTitles
+save(clusterTitles, file = paste0(netPropPath,"/results/clusterTitles_highres.rdata"))
+```
+
+
+```{r load data}
+# Remove the first three and the last three characters of the cluster titles and add them to the communityDF
+#load(file = paste0(netPropPath,"/results/clusterTitles_highres.rdata"))
+communityDF$clusterTitle <- unlist(clusterTitles) 
+# where the is longer then 8 characters remove the first three and the last three characters
+communityDF$clusterTitle <- sapply(communityDF$clusterTitle, function(x) if(nchar(x) > 8) stringr::str_sub(x, 2, -2) else x)
+#write.csv(communityDFtemp, paste0(netPropPath,"/results/consensusClusters.csv"), row.names = FALSE)
+
+
+# Contract graph to communities
+intGraphSubContract <- contract(intGraphSub,
+                  communities$membership, vertex.attr.comb = list(name = "concat"))
+
+intGraphSubContract <- igraph::simplify(intGraphSubContract)	
+
+V(intGraphSubContract)$name <- min(communities$membership):max(communities$membership)
+
+V(intGraphSubContract)$color <- communityDF$color
+V(intGraphSubContract)$opacity <- (communityDF$ratioOT + communityDF$ratioEVA)^(1/3)
+V(intGraphSubContract)$title <- paste("<b> Module </b> : ", communityDF$clusterTitle, "<br> ",
+                                      " <hr> ",
+                                      "<b> Size </b> : ", communityDF$size, " <br> ",
+                                      "<b> GWAS/ECD Ratios: </b>  ", format(communityDF$ratioOT,digits=2),"/", format(communityDF$ratioEVA,digits=2), "(",format(communityDF$overlap,digits=2),") <br> ",
+                                        "<b> Enriched Biological Processes: </b> <small> ", communityDF$enrichedGOBPString, " </small> <br> ",
+                                        "<b> Enriched Pathways: </b> <small> ", communityDF$enrichedPathwaysString, " </small> <br> ",
+                                        "<b> Enriched Sub Cellular Locations: </b> <small>  ", communityDF$enrichedGOCCString, " </small> <br> ")
+
+altTitle <- paste0("<b> Module </b> : ", V(intGraphSubContract)$name, "<br> ",
+                                      " <hr> ",
+                                      "<b> Size </b> : ", communityDF$size, " <br> ",
+                                      "<b> GWAS/ECD Ratios: </b>  ", format(communityDF$ratioOT,digits=2),"/", format(communityDF$ratioEVA,digits=2), "(",format(communityDF$overlap,digits=2),") <br> ",
+                                        "<b> Frequent Pathways: </b> <small> ", communityDF$pathwayString, " </small> <br> ",
+                                        "<b> Frequent Sub Cellular Locations: </b> <small>  ", communityDF$subCellularLocationString, " </small> <br> ")
+
+
+emptyInds <- (communityDF$enrichedGOBPString == " ()" & communityDF$enrichedPathwaysString == " ()" & communityDF$enrichedGOCCString == " ()") & communityDF$pathwayString != " ()"
+V(intGraphSubContract)$title[emptyInds] <- altTitle[emptyInds]
+completelyEmptyInds <- (communityDF$enrichedGOBPString == " ()" & communityDF$enrichedPathwaysString == " ()" & communityDF$enrichedGOCCString == " ()" & communityDF$pathwayString == " ()")
+
+altaltText <- paste("<b> Module </b> : ", V(intGraphSubContract)$name, "<br> ",
+                                      " <hr> ",
+                                      "<b> Size </b> : ", communityDF$size, " <br> ",
+                                      "<b> GWAS/ECD Ratios: </b>  ", format(communityDF$ratioOT,digits=2),"/", format(communityDF$ratioEVA,digits=2), "(",format(communityDF$overlap,digits=2),") <br> ")
+
+V(intGraphSubContract)$title[completelyEmptyInds] <- altaltText[completelyEmptyInds]
+# Add to the title so there is a html button that reveals the genes
+# Create a vector of gene names for each community
+V(intGraphSubContract)$genes <- sapply(unique(communities$membership), function(x) paste0(V(intGraphSub)$name[communities$membership == x], collapse = ", "))
+
+# Remove nodes that only have one member in the community
+intGraphSubContract <- delete_vertices(intGraphSubContract, V(intGraphSubContract)[table(communities$membership) < 3])
+
+# Remove half of edges
+intGraphSubContract <- delete_edges(intGraphSubContract, sample(E(intGraphSubContract), length(E(intGraphSubContract))*0.5))
+
+data <- visNetwork::toVisNetworkData(intGraphSubContract)
+
+# Add a size column the corresponds to the number of nodes in the community
+data$nodes$size <- log1p(sapply(data$nodes$id, function(x) sum(communities$membership == x)))*5
+
+plotObj <- visNetwork::visNetwork(nodes = data$nodes, edges = data$edges, width = 1920,height = 1000) %>% 
+  visNetwork::visIgraphLayout(layout = "layout_nicely") %>%
+  visNetwork::visEdges(color=list(opacity = 0.1)) %>%
+  visNetwork::visOptions(highlightNearest = TRUE) %>%
+  visNetwork::visEvents(selectNode = "function(properties) {
+      alert('Genes in module: ' + this.body.data.nodes.get(properties.nodes[0]).genes);}")
+
+
+#plotObj
+  
+
+htmlwidgets::saveWidget(plotObj,paste0(netPropPath,"/figures/GraphPlotNew.html")	)
+
+```
+
+```{r load data}
+
+# Save the communityDF, the plotObj, and the intGraphSubContract
+save(communityDF, file = paste0(netPropPath,"/results/communityDF_highres.rdata"))
+#save(plotObj, file = paste0(netPropPath,"/results/plotObj.rdata"))
+save(intGraphSubContract, file = paste0(netPropPath,"/results/intGraphSubContract_highres.rdata"))
+```
+
+
+
+```{r load data}
+# Look at specific clusters 
+
+clustesIds <- c(74) #,118,320)
+clustesIds <- c(118) 
+clustesIds <- c(320) 
+clustesIds <- c(14)
+clustesIds <- sample(1:(nrow(communityDF)/4),1)
+
+# Get the genes in the cluster and induce a subgraph
+genes <- V(intGraphSub)$name[communities$membership %in% clustesIds]
+
+subGraph <- induced_subgraph(intGraphSub, V(intGraphSub)$name %in% genes)
+
+# Color the nodes in the subgraph by if the come from the otGenes or evaGenes or both
+V(subGraph)$color <- "gray"
+V(subGraph)$color[V(subGraph)$name %in% otGenes] <- "red"
+V(subGraph)$color[V(subGraph)$name %in% evaGenes] <- "blue"
+V(subGraph)$color[V(subGraph)$name %in% otGenes & V(subGraph)$name %in% evaGenes] <- "yellow"
+
+# Plot with visNetwork
+data <- visNetwork::toVisNetworkData(subGraph)
+
+plotObj <- visNetwork::visNetwork(nodes = data$nodes, edges = data$edges, width = 1000,height = 1000,
+    main = paste(communityDF$clusterTitle[communityDF$community %in% clustesIds])) %>%
+  visNetwork::visIgraphLayout(layout = "layout_nicely") %>%
+  visNetwork::visEdges(color=list(opacity = 0.1)) %>%
+  visNetwork::visOptions(highlightNearest = TRUE) 
+
+plotObj
+
+```
+
+
+```{r load data}
+
+assocDataBySourceDirIndiMergedFiltered <- read.csv(paste0(netPropPath,"/data/associationByDatasourceDirIndirMergedFiltered_withSource.csv"), stringsAsFactors = FALSE)
+
+convergeSuccess <- "notTrue"
+counter <- 0
+
+while(!is.logical(convergeSuccess) & counter < 100) {
+    res <- igraph::page_rank(intGraphSub, directed = FALSE, damping = 1, personalized = rep(1,length(V(intGraphSub))),algo="arpack")
+    convergeSuccess <- all.equal(res$value,1)
+    counter <- counter + 1
+}
+
+if(convergeSuccess != TRUE) {
+    stop("Failed to converge")
+} 
+
+netPropDataFrame <- runNetProp(network = intGraphSub,
+        assocData = assocDataBySourceDirIndiMergedFiltered,
+        cutoff = c("value" = 0.1, "number" = 2),
+        binarize = TRUE,
+        damping = 0.85,
+        NormFunc = ECnormalize,
+        settingsForNormFunc = list("logtransform" = TRUE,"refVec" =res$vector),
+        returnSeedVec = FALSE,
+        computeStats = list("otGenes" = unique(rareDiseaseAssocsFromOTgenetics$targetId),
+                            "evaGenes" = unique(assocDataRareDiseasesCollapsed$targetId),
+                            "mouseGenes" = unique(mouseAssocs$targetId)))
+
+save(netPropDataFrame, file = paste0(netPropPath,"/results/netPropDataFrame_ecnorm.rdata"))
+load(paste0(netPropPath,"/results/netPropDataFrame_ecnorm.rdata"))
+rm(assocDataBySourceDirIndiMergedFiltered)
+```
+
+
+
+
+```{r load data}
+
+netPropRes <- netPropDataFrame[["netProp"]]
+rm(netPropDataFrame)
+
+# Do fgsea test on the netPropDataFrame and the clusters
+
+# Genesets are communities from the consensus clustering
+genesets <- sapply(unique(communities$membership), function(x) V(intGraphSub)$name[communities$membership == x])
+names(genesets) <- unique(communities$membership)
+
+inputForFGSEA <- list("netPropRes" = netPropRes, "genesets" = genesets)
+save(inputForFGSEA, file = paste0(netPropPath,"/results/fgseaData.rdata"))
+
+load(paste0(netPropPath,"/results/fgseaData.rdata"))
+genesets <- inputForFGSEA$genesets
+netPropRes <- inputForFGSEA$netPropRes
+
+
+# For each row in the netPropDataFrame run the fsgea test against the genesets
+ fgsea <- foreach(trait = iter(netPropRes, by = "row"), .combine = rbind) %dopar% {
+     statsVec <- setNames(as.numeric(trait[1:(length(trait)-1)]),colnames(trait)[1:(length(trait)-1)])
+     temp <- fgsea::fgsea(pathways = genesets,
+                  stats = statsVec,
+                  minSize = 3, maxSize = Inf,eps = 0)
+     temp <- temp[temp$padj < 0.005,c("pathway","padj","pval")]
+     temp$traitID <- trait$traitID
+        temp
+ }
+save(fgsea, file = paste0(netPropPath,"/results/fgseaRes.rdata"))
+
+
+```
+
+```{r load data}
+ 
+#load(paste0(netPropPath,"/results/fgseaRes.rdata"))
+
+# Plot the network with enrihced pathways for EFO_0003900
+traitID <- "EFO_0003900"
+
+# Get the enriched pathways for the trait
+enrichedPathways <- fgsea[fgsea$traitID == traitID,]
+enrichedPathways$log10padj <- -log10(enrichedPathways$padj)
+# Use the previous intGraphSubContract object and color the nodes that are in the enriched pathways based on p-value
+V(intGraphSubContract)$color <- "#c4c4c4"
+
+# Map -log10(p-value) to a color using scales package
+colors <- scales::col_numeric(domain =c(0,max(enrichedPathways$log10padj)),  palette = c("gray","red"))(enrichedPathways$log10padj)
+
+V(intGraphSubContract)$color[match(enrichedPathways$pathway, V(intGraphSubContract)$name)] <- colors
+
+# Plot with visNetwork
+
+data <- visNetwork::toVisNetworkData(intGraphSubContract)
+
+# Add a size column the corresponds to the number of nodes in the community
+data$nodes$size <- log1p(sapply(data$nodes$id, function(x) sum(communities$membership == x)))*5
+
+plotObj <- visNetwork::visNetwork(nodes = data$nodes, edges = data$edges, width = 1920,height = 1000) %>% 
+  visNetwork::visIgraphLayout(layout = "layout_nicely") %>%
+  visNetwork::visEdges(color=list("opacity" = 0.05)) 
+
+
+htmlwidgets::saveWidget(plotObj,paste0(netPropPath,"/figures/GraphPlot_Cilliopathy.html")	)
+
+
+```
+
+```{r load data}
+# Creata a dataframe the contains colors for the enriched pathways for every trait
+colMat <- matrix("#c4c4c4", nrow = length(unique(fgsea$traitID)),
+                              ncol = length(V(intGraphSubContract)$name),
+                              dimnames = list(unique(fgsea$traitID),V(intGraphSubContract)$name))
+
+colFunc <- scales::col_numeric(domain =c(0,quantile((-log10(fgsea$padj)),0.99)),  palette = c("#c4c4c4","#f70d00"))
+fgsea$log10padj <- -log10(fgsea$padj)
+fgsea$log10padj[fgsea$log10padj>quantile(fgsea$log10padj,0.99)] <- quantile(fgsea$log10padj,0.99)
+
+for(i in 1:nrow(colMat)) {
+  # Get the enriched pathways
+  traitID <- rownames(colMat)[i]
+  enrichedPathways <- fgsea[fgsea$traitID == traitID,]
+  colors <- colFunc(enrichedPathways$log10padj)
+  colMat[i,match(enrichedPathways$pathway, colnames(colMat))] <- colors
+}
+
+# Save the colMat
+save(colMat, file = paste0(netPropPath,"/results/colMat.rdata"))
+
+# Plot the graph with EFO_0003900
+
+V(intGraphSubContract)$color <- colMat["EFO_0003900",]
+
+data <- visNetwork::toVisNetworkData(intGraphSubContract)
+
+# Add a size column the corresponds to the number of nodes in the community
+data$nodes$size <- log1p(sapply(data$nodes$id, function(x) sum(communities$membership == x)))*5
+
+plotObj <- visNetwork::visNetwork(nodes = data$nodes, edges = data$edges, width = 1920,height = 1000) %>% 
+  visNetwork::visIgraphLayout(layout = "layout_nicely") %>%
+  visNetwork::visEdges(color=list("opacity" = 0.05)) 
+
+
+htmlwidgets::saveWidget(plotObj,paste0(netPropPath,"/figures/GraphPlot_Cilliopathy2.html")	)
+
+
+```

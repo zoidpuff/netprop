@@ -5,7 +5,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 netPropPath <- "/home/gummi/netprop"
-load("/home/gummi/netprop/results/netpropDistanceResRAREcommon_assocRareGWASRelatedSet_noNorm_kendall.rdata")
+load("/home/gummi/netprop/netpropDistanceResRAREcommon_assocRareGWASRelatedSet_ECnormLog_kendall.rdata")
 library(ggplot2)
 library(kableExtra)
 library(dplyr)
@@ -76,11 +76,11 @@ ggplot(data.frame("x" = densitiesList[["densityEstRand"]]$x, "y" = densitiesList
 ```{r include=TRUE}
 
 vectors <- c(
+    "randomVec",
     "related_across",
+    "related_Relacross",
     "related_ot_genetics_portal",
-    "related_eva, orphanet",
-    "related_randomot_genetics_portal",
-    "related_randomeva, orphanet")
+    "related_eva, orphanet")
 
 # Add the vectors together into a dataframe, including a label column
 
@@ -90,8 +90,14 @@ vectorList <- lapply(vectors, function(x) {
 
 vectorDF <- do.call(rbind, vectorList)
 
-vectorDF$label <- factor(vectorDF$label, levels = vectors)
-
+vectorDF$label <- factor(vectorDF$label, levels = vectors,
+                                         labels = c("Random Trait Pairs",
+                                                    "Same trait, Across Sources",
+                                                    "Related Traits, Across Sources",
+                                                    "Related Traits, GWAS Source",
+                                                    "Related Traits, Curated DB Source"
+                                                    ))
+                                                    
 # Filter out any value that is 1 or more
 
 vectorDF <- vectorDF[vectorDF$value < 1,]
@@ -110,27 +116,35 @@ summary(lmRes)
 
 # Plot the vecorts as a boxplot
 
-ggplot(vectorDF, aes(x = label, y = value, fill = label)) +
+plot <- ggplot(vectorDF, aes(x = label, y = value, fill = label)) +
     geom_boxplot() +
     theme_classic() +
-    labs(title = "Boxplot of related diseases",
-        x = "Disease set",
-        y = "Distance") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
-    # Add t-tests with ggpubr
-    ggpubr::stat_compare_means(method = "t.test", comparisons = list(c("related_randomot_genetics_portal", "related_across"),
-                                                                    c("related_randomot_genetics_portal", "related_ot_genetics_portal"),
-                                                                    c("related_randomot_genetics_portal", "related_eva, orphanet"),
-                                                                    c("related_randomot_genetics_portal", "related_randomeva, orphanet")),
-                                                                    label = "p.format") 
+    labs(
+        x = "",
+        y = "Kendall Correlation Coeffcient") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggsci::scale_fill_npg() +
+    ggpubr::stat_compare_means(method = "t.test", comparisons = list(c("Random Trait Pairs", "Same trait, Across Sources"),
+                                                                    c("Random Trait Pairs", "Related Traits, Across Sources"),
+                                                                    c("Same trait, Across Sources", "Related Traits, Across Sources"),
+                                                                    c("Same trait, Across Sources", "Related Traits, GWAS Source"),
+                                                                    c("Same trait, Across Sources", "Related Traits, Curated DB Source")),
+                                                                    label = "p.format") +
+                               # Remove legend title
+    theme(legend.title = element_blank())
+
+# save thhe plot
+plot
+ggsave("/home/gummi/netprop/results/boxplot.png", plot, width = 7, height = 6)
+
 ```
-
-
 ```{r include=TRUE}
 
 # get some plots with generatePlotsFromDistCompareResults
-
+res[["pairDF_Leiden_UMAP"]] <- filter(res[["pairDF_Leiden_UMAP"]], pairName == "across")
 plots <- generatePlotsFromDistCompareResults(res,diseaseMapping,skipDensity = TRUE) 
+
+
 ggplotly(plots[["Plot_Leiden_UMAP"]])
 ```
 
@@ -139,6 +153,7 @@ ggplotly(plots[["Plot_Leiden_UMAP"]])
 
 # get some plots with generatePlotsFromDistCompareResults
 
+res[["pairDF_Leiden_cMDS"]] <- filter(res[["pairDF_Leiden_cMDS"]], pairName == "across")
 plots <- generatePlotsFromDistCompareResults(res,diseaseMapping,skipDensity = TRUE) 
 ggplotly(plots[["Plot_Leiden_cMDS"]])
 ```

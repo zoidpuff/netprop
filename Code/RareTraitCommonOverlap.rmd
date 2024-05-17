@@ -19,6 +19,9 @@ source(paste0(netPropPath, '/Code/NetPropFuncs.R'))
 library(ggvenn)
 library(ggplot2)
 
+
+# Load interaction graph                                              
+load(paste0(netPropPath,"/data/intGraph.rdata"))
 ```
 
 
@@ -30,11 +33,21 @@ library(ggplot2)
 
 assocDataBySource <- read.csv(paste0(netPropPath,"/data/newData/associationByDatasourceMerged.csv"), stringsAsFactors = FALSE)
 # diseaseDF
-load(paste0(netPropPath,"/data/diseases.rdata"))
+load(paste0(netPropPath,"/data/diseasesNew.rdata"))
 idToName <- setNames(diseaseDF$name, diseaseDF$id)
 
 ```
 
+```{r visualzie graph}
+
+l <- layout_with_fr(intGraph, niter=50)
+
+# Start plot capture
+png(paste0(netPropPath,"/figures/GraphPlot.png"), width = 2000, height = 200)
+plot(intGraph, layout=l)
+dev.off()
+
+```
 
 ```{r get set of rare traits} 
 
@@ -205,11 +218,44 @@ vennData <- list("a" = unique(rareDiseaseAssocsFromOTgenetics$targetId),
                   
 names(vennData) <- c(paste0("OT Genetics (L2G > ",scoreCutoffOT,")"),paste0("EVA/Orph (Score > ",scoreCutoffOrphanet,")"))
 
-geneVennPlot <- ggvenn(vennData,set_name_size = 4,auto_scale = TRUE) + 
+geneVennPlot <- ggvenn(vennData,set_name_size = 4,auto_scale = F) + 
               labs(title = "Overlap of Genes that are associated with disease",
               subtitle =  paste0("Across traits with associations that meet cutoff in both cohorts , n = ",length(unique(assocDataRareDiseasesCollapsed$diseaseId)),")")) +
               scale_fill_manual(values = c("#FF0000","#0000FF")) 
 
+
+
+
+
+
+# Plot the distribution of degrees for the two datasets
+
+degreeData <- data.frame(degree = igraph::degree(intGraph, v = V(intGraph)$name %in% unique(rareDiseaseAssocsFromOTgenetics$targetId)),
+                         dataset = "OT Genetics (L2G > 0.4)")
+
+degreeData <- rbind(degreeData,
+                        data.frame(degree = igraph::degree(intGraph, v = V(intGraph)$name %in% unique(assocDataRareDiseasesCollapsed$targetId)),
+                                    dataset = "EVA/Orph (Score > 0.5)"))
+
+degreePlot <- ggplot(degreeData, aes(x = degree, fill = dataset)) +
+                  geom_density(alpha = 0.5) +
+                  ggtitle("Distribution of Node Degrees") + 
+                  ylab("Density") + 
+                  xlab("Node Degree") + 
+                  theme_classic() +
+                  guides(fill=guide_legend(title="Genes in:")) + 
+                  scale_x_log10()
+# Do a t-test to see if the means are different on the log scale
+
+ttestDegree <- t.test(log(degreeData$degree[degreeData$dataset == "OT Genetics (L2G > 0.4)"]),
+                      log(degreeData$degree[degreeData$dataset == "EVA/Orph (Score > 0.5)"]))
+
+
+
+# Convert the means back to the original scale
+
+exp(mean(log(degreeData$degree[degreeData$dataset == "OT Genetics (L2G > 0.4)"])))
+exp(mean(log(degreeData$degree[degreeData$dataset == "EVA/Orph (Score > 0.5)"])))
 
 vennData2 <- list("a" = paste0(rareDiseaseAssocsFromOTgenetics$targetId,rareDiseaseAssocsFromOTgenetics$diseaseId),
                 "b" = paste0(assocDataRareDiseasesCollapsed$targetId,assocDataRareDiseasesCollapsed$diseaseId))
@@ -998,3 +1044,55 @@ mousePlot <- cowplot::plot_grid(geneVennplotEmptyAdded,firstPlot,constraintPlot,
 
 
 ```
+
+
+
+
+
+# Create venn diagrams to show the overlap between the targetGenes of the two datasets
+vennData <- list("a" = unique(rareDiseaseAssocsFromOTgenetics$targetId),
+                "b" = unique(assocDataRareDiseasesCollapsed$targetId),
+                "c" = unique(mouseAssocs$targetId))
+                  
+names(vennData) <- c(paste0("OT Genetics (L2G > ",scoreCutoffOT,")"),paste0("EVA/Orph (Score > ",scoreCutoffOrphanet,")"),"mouse")
+
+geneVennPlot <- ggvenn(vennData,set_name_size = 4,auto_scale = F) + 
+              labs(title = "Overlap of Genes that are associated with disease",
+              subtitle =  paste0("Across traits with associations that meet cutoff in both cohorts , n = ",length(unique(assocDataRareDiseasesCollapsed$diseaseId)),")")) +
+              scale_fill_manual(values = c("#FF0000","#0000FF","#00FF00")) 
+
+# Get the distribution of edges in the interaction graph intGraph that are in the two datasets
+
+summary(igraph::degree(intGraph, v = V(intGraph)$name %in% unique(rareDiseaseAssocsFromOTgenetics$targetId)))
+
+summary(igraph::degree(intGraph, v = V(intGraph)$name %in% unique(assocDataRareDiseasesCollapsed$targetId)))
+
+summary(igraph::degree(intGraph, v = V(intGraph)$name %in% unique(mouseAssocs$targetId))) 
+# Plot the distribution of degrees for the two datasets
+
+degreeData <- data.frame(degree = igraph::degree(intGraph, v = V(intGraph)$name %in% unique(rareDiseaseAssocsFromOTgenetics$targetId)),
+                         dataset = "OT Genetics (L2G > 0.4)")
+
+degreeData <- rbind(degreeData,
+                        data.frame(degree = igraph::degree(intGraph, v = V(intGraph)$name %in% unique(assocDataRareDiseasesCollapsed$targetId)),
+                                    dataset = "EVA/Orph (Score > 0.5)"))
+
+degreePlot <- ggplot(degreeData, aes(x = degree, fill = dataset)) +
+                  geom_density(alpha = 0.5) +
+                  ggtitle("Distribution of Node Degrees") + 
+                  ylab("Density") + 
+                  xlab("Node Degree") + 
+                  theme_classic() +
+                  guides(fill=guide_legend(title="Genes in:")) + 
+                  scale_x_log10()
+# Do a t-test to see if the means are different on the log scale
+
+ttestDegree <- t.test(log(degreeData$degree[degreeData$dataset == "OT Genetics (L2G > 0.4)"]),
+                      log(degreeData$degree[degreeData$dataset == "EVA/Orph (Score > 0.5)"]))
+
+summary(ttestDegree)
+
+# Convert the means back to the original scale
+
+exp(mean(log(degreeData$degree[degreeData$dataset == "OT Genetics (L2G > 0.4)"])))
+exp(mean(log(degreeData$degree[degreeData$dataset == "EVA/Orph (Score > 0.5)"])))

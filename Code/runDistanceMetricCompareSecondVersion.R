@@ -8,7 +8,7 @@ library(doParallel)
 library(foreach)
 
 # Register the parallel backend
-no_cores <- min(15, detectCores())
+no_cores <- min(10, detectCores())
 cl <- makeCluster(no_cores)
 
 registerDoParallel(cl)
@@ -75,22 +75,22 @@ assocDataList <- list(#"assocDataBySourceDirectFiltered" = assocDataBySourceDire
 # Create a list of distance metrics
 distanceMetricList <- list(
   "kendall" = list("method" = "kendall"),
-  "euclidean" = list("method" = "euclidean","returnDist" = NA),
-  "manhattan" = list("method" = "manhattan","returnDist" = NA),
-  "minkowski05" = list("method" = "minkowski","returnDist" = NA,"p" = 0.5),
-  "cosine" = list("method" = "cosine"),
-  "cosineSharp2" = list("method" = "cosine","p" = 2),
-  "pearson" = list("method" = "pearson"),	
+  #"euclidean" = list("method" = "euclidean","returnDist" = NA),
+  #"manhattan" = list("method" = "manhattan","returnDist" = NA),
+  #"minkowski05" = list("method" = "minkowski","returnDist" = NA,"p" = 0.5),
+  #"cosine" = list("method" = "cosine"),
+  #"cosineSharp2" = list("method" = "cosine","p" = 2),
+  #"pearson" = list("method" = "pearson"),	
   "spearman" = list("method" = "spearman"),
-  "jsd" = list("method" = "jsd")
+  #"jsd" = list("method" = "jsd")
 )
 
 
-normList <- list(#list(NULL,NULL,"noNorm"),
-                #list(ECnormalize,list("logtransform" = TRUE,"refVec" =res$vector ),"ECnormLog"),
+normList <- list(list(NULL,NULL,"noNorm"),
+                list(ECnormalize,list("logtransform" = TRUE,"refVec" =res$vector ),"ECnormLog")
                 #list(ECnormalize,list("logtransform" = TRUE,"refVec" =referenceVec$avgVec ),"AverageVecLOR"),
                # list(permuteTestNormalize,list("nSamples" = 100, "perserveDegree" = FALSE, "degreeSampleSmoothing" = 0, "minBucketSize" = 1),"permuteNorm"),
-                list(permuteTestParalell,list("nSamples" = 200,"ncore" = no_cores),"permuteNormDegree")
+                #list(permuteTestParalell,list("nSamples" = 200,"ncore" = no_cores),"permuteNormDegree")
 )
 
 
