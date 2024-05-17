@@ -8,7 +8,7 @@ library(doParallel)
 library(foreach)
 
 # Register the parallel backend
-no_cores <- min(10, detectCores())
+no_cores <- min(2, detectCores())
 cl <- makeCluster(no_cores)
 
 registerDoParallel(cl)
@@ -74,14 +74,14 @@ assocDataList <- list(#"assocDataBySourceDirectFiltered" = assocDataBySourceDire
 
 # Create a list of distance metrics
 distanceMetricList <- list(
-  "kendall" = list("method" = "kendall"),
+  "kendall" = list("method" = "kendall")
   #"euclidean" = list("method" = "euclidean","returnDist" = NA),
   #"manhattan" = list("method" = "manhattan","returnDist" = NA),
   #"minkowski05" = list("method" = "minkowski","returnDist" = NA,"p" = 0.5),
   #"cosine" = list("method" = "cosine"),
   #"cosineSharp2" = list("method" = "cosine","p" = 2),
   #"pearson" = list("method" = "pearson"),	
-  "spearman" = list("method" = "spearman"),
+ # "spearman" = list("method" = "spearman"),
   #"jsd" = list("method" = "jsd")
 )
 
@@ -95,11 +95,12 @@ normList <- list(list(NULL,NULL,"noNorm"),
 
 
 
-preprocessList <- list(c("0","FALSE","FALSE"),
-                        c("0.25","FALSE","FALSE"),
-                        c("0.5","FALSE","FALSE"),
-                        c("0.75","FALSE","FALSE"),
-                        c("0","TRUE","FALSE"))
+preprocessList <- list(c("0","FALSE","FALSE")
+                       # c("0.25","FALSE","FALSE"),
+                        #c("0.5","FALSE","FALSE"),
+                        #c("0.75","FALSE","FALSE"),
+                        #c("0","TRUE","FALSE")
+                        )
 
 
 
@@ -118,7 +119,7 @@ for(dataset in names(assocDataList)){
 
             netPropDataFrame <- runNetProp(network = intGraph,
                     assocData = assocDataList[[dataset]],
-                    cutoff = c("value" = 0.1, "number" = 5),
+                    cutoff = c("value" = 0.1, "number" = 2),
                     binarize = TRUE,
                     damping = 0.85,
                     NormFunc = NORMFUNC[[1]],
@@ -150,7 +151,7 @@ for(dataset in names(assocDataList)){
 
                                     if(as.logical(PREPROCESS[2]) & distanceMetric == "jsd"){return(NULL)}
 
-                                    if(!any(0>as.matrix(netPropDataFramePP))){return(NULL)}
+                                    #if(!any(0>as.matrix(netPropDataFramePP))){return(NULL)}
 
                                 #for(distanceMetric in names(distanceMetricList)){
                                     cat(file="internalStarted.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
@@ -161,11 +162,11 @@ for(dataset in names(assocDataList)){
                                             8,
                                             TRUE,
                                             diseaseDF,
-                                            FALSE,
+                                            TRUE,
                                             shortestPATHS)
 
                                             save(res, file = paste0(netPropPath,
-                                                "/results/compareDist/netpropDistanceMetricCompare_",
+                                                "/results/compareDist/netpropDistanceMetricCompareBIG_",
                                                 dataset,"_",
                                                 NORMFUNC[[3]],"_",
                                                 paste0(PREPROCESS,collapse = "_"),
@@ -174,7 +175,7 @@ for(dataset in names(assocDataList)){
                                     gc()
                                     
                                     cat(file="internalFinished.txt",append = TRUE,paste0("dataset: ", dataset, " NormFunc: ", NORMFUNC[[3]], " Preprocess: ", paste0(PREPROCESS,collapse = "_"), " DistanceMetric: ", distanceMetric,"\n"))	
-                                            "empty"
+                                            
                                # }
         }
     }
